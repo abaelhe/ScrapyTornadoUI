@@ -5,7 +5,7 @@ import lxml.html
 import scrapy
 from scrapy.http.request.form import _get_inputs, _get_form_url
 from scrapy.exceptions import NotConfigured
-from formasaurus import FormExtractor
+from formasaurus.classifiers import extract_forms
 
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class Login(object):
             raise NotConfigured
         crawler.signals.connect(self.test_login_credentials,
                                 signal=test_login_credentials)
-        self.ex = FormExtractor.load("./myextractor.joblib")
+        # self.ex = FormExtractor.load("./myextractor.joblib")
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -127,7 +127,8 @@ class Login(object):
 
     def _find_login_form(self, response):
         tree = lxml.html.fromstring(response.body, base_url=response.url)
-        for form_element, form_type in self.ex.extract_forms(tree):
+        # for form_element, form_type in self.ex.extract_forms(tree):
+        for form_element, form_type in extract_forms(tree):
             if form_type == 'l':  # Login form
                 return form_element
 

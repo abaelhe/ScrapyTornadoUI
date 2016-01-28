@@ -68,6 +68,7 @@ class MongoExportPipeline(object):
 
     @tt_coroutine
     def open_spider(self, spider):
+        logger.debug("open_spider {}".format(spider.name))
         try:
             yield self.items_col.ensure_index(self.job_id_key)
 
@@ -89,6 +90,7 @@ class MongoExportPipeline(object):
 
     @tt_coroutine
     def close_spider(self, spider):
+        logger.debug("close_spider {}".format(spider.name))
         if self.job_id is None:
             self.jobs_client.close()
             self.items_client.close()

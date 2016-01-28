@@ -1,7 +1,7 @@
 *~
 *.swp
 .DS_STORE
-
+src/
 .idea
 *.pyc
 node_modules/

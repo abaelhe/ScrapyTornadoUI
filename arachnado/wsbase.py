@@ -23,6 +23,7 @@ class BaseWSHandler(websocket.WebSocketHandler):
     def write_event(self, event, data):
         """ Send a message to the client """
         message = json_encode({'event': event, 'data': data})
+        logger.debug(message)
         self.write_message(message)
 
     def on_message(self, message):

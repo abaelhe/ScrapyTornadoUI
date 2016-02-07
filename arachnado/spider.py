@@ -46,12 +46,11 @@ DEFAULT_SETTINGS = {
     'DOWNLOAD_HANDLERS': {'s3': None},
 
     'SPIDER_MIDDLEWARES': {
-        'arachnado.spidermiddlewares.pageitems.PageItemsMiddleware': 100,
-        'arachnado.spidermiddlewares.login.Login': 10,
+        # 'arachnado.spidermiddlewares.pageitems.PageItemsMiddleware': 100,
+        # 'arachnado.spidermiddlewares.login.Login': 10,
     },
     'DOWNLOADER_MIDDLEWARES': {
-        'arachnado.downloadermiddlewares.proxyfromsettings'
-        '.ProxyFromSettingsMiddleware': 10,
+        # 'arachnado.downloadermiddlewares.proxyfromsettings.ProxyFromSettingsMiddleware': 10,
     },
     'ITEM_PIPELINES': {
         'arachnado.pipelines.mongoexport.MongoExportPipeline': 10,

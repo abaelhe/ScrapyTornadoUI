@@ -1,6 +1,6 @@
 import logging
 import time
-
+import os
 import lxml.html
 import scrapy
 from scrapy.http.request.form import _get_inputs, _get_form_url
@@ -39,7 +39,16 @@ class Login(object):
             raise NotConfigured
         crawler.signals.connect(self.test_login_credentials,
                                 signal=test_login_credentials)
-        self.ex = FormExtractor.load("./myextractor.joblib")
+        job_path = os.path.join(os.getcwd(),"myextractor.joblib")
+        logging.warning(job_path)
+        self.ex = None
+        try:
+            # self.ex = FormExtractor.load(job_path)
+            pass
+        except:
+            logger.error("FormExtractor creation failed")
+            # logger.error(ex)
+            self.ex = None
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -127,9 +136,10 @@ class Login(object):
 
     def _find_login_form(self, response):
         tree = lxml.html.fromstring(response.body, base_url=response.url)
-        for form_element, form_type in self.ex.extract_forms(tree):
-            if form_type == 'l':  # Login form
-                return form_element
+        if self.ex:
+            for form_element, form_type in self.ex.extract_forms(tree):
+                if form_type == 'l':  # Login form
+                    return form_element
 
     def _get_login_request(self, response, spider, username, password):
         form_element = self._find_login_form(response)

@@ -18,6 +18,8 @@ class SitesRpc(object):
         self.storage.fetch().add_done_callback(_list)
 
     def post(self, site):
+        print "------------------1111"
+        self.logger.warning(site)
         self.storage.create(site)
 
     def patch(self, site):

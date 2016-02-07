@@ -202,9 +202,13 @@ class ArachnadoCrawlerProcess(CrawlerProcess):
                                     CrawlWebsiteSpider)
 
         if spider_cls is not None:
+            logger.debug("spider class found {}".format(domain))
             crawler = self.create_crawler(settings, spider_cls=spider_cls)
             self.crawl(crawler, domain=domain, **args)
             return crawler
+        else:
+            logger.error("spider class {} not found at {}".format(domain,
+                                                                  self._get_spider_package_names()))
 
     def _get_spider_package_names(self):
         return [name for name in re.split(

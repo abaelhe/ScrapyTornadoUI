@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "thread_link": {
+      "type": "string"
+    },
+    "thread_name": {
+      "type": "string"
+    },
+    "author": {
+      "id": "author",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string"
+        },
+        "author_id": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        },
+        "avatar": {
+          "type": "string"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string"
+    },
+    "parent_id": {
+      "type": "string"
+    },
+    "link": {
+      "type": "string"
+    },
+    "item_id": {
+      "type": "string"
+    },
+    "thread_id": {
+      "type": "string"
+    },
+    "image_hashes": {
+      "id": "image_hashes",
+      "type": "object",
+      "patternProperties": {
+        "^http": {
+          "type": "object",
+          "properties": {
+            "ahash": {
+              "type": "string"
+            },
+            "dhash": {
+              "type": "string"
+            },
+            "phash": {
+              "type": "string"
+            },
+            "sha1": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "thread_name",
+    "author",
+    "created_at",
+    "content",
+    "item_id",
+    "thread_id"
+  ]
+}

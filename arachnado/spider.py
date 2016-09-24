@@ -107,6 +107,7 @@ class CrawlWebsiteSpider(ArachnadoSpider):
                     yield scrapy.Request(url, meta={'is_page': True})
 
         for link in self.get_links(response):
+            print(link.url)
             if link_looks_like_logout(link):
                 continue
             yield scrapy.Request(link.url, self.parse)
@@ -121,6 +122,44 @@ class CrawlWebsiteSpider(ArachnadoSpider):
             return
         if not self.link_extractor.matches(request.url):
             return True
+
+
+class WideOnionCrawlSpider(CrawlWebsiteSpider):
+    """
+    """
+    name = 'onionwide'
+    start_urls = None
+    file_feed = None
+    custom_settings = {
+        'DEPTH_LIMIT': 10,
+    }
+
+    def __init__(self, *args, **kwargs):
+        super(WideOnionCrawlSpider, self).__init__(*args, **kwargs)
+        self.start_urls = kwargs.get("start_urls", [])
+        self.file_feed = kwargs.get("file_feed", None)
+
+    def start_requests(self):
+        self.logger.info("Started job %s (mongo id=%s)",    self.crawl_id, self.motor_job_id)
+        if self.start_urls:
+            for url in self.start_urls:
+                fixed_url = add_scheme_if_missing(url)
+                yield scrapy.Request(fixed_url, self.parse)
+        if self.file_feed:
+            with open(self.file_feed, "r") as urls_file:
+                for url in urls_file:
+                    fixed_url = add_scheme_if_missing(url)
+                    yield scrapy.Request(fixed_url, self.parse)
+
+    @property
+    def link_extractor(self):
+        return LinkExtractor(
+            allow="https?:\/\/[^\/]*\.onion",
+            canonicalize=False,
+        )
+
+    def should_drop_request(self, request):
+        return False
 
 
 @contextlib.contextmanager

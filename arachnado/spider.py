@@ -6,9 +6,14 @@ import logging
 import scrapy
 from scrapy.linkextractors import LinkExtractor
 from scrapy.http.response.html import HtmlResponse
+from scrapy_splash.response import SplashResponse
 from autologin_middleware import link_looks_like_logout
 
 from arachnado.utils.misc import add_scheme_if_missing, get_netloc
+import pkgutil
+import json
+import re
+from urllib.parse import urlsplit
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -97,7 +102,6 @@ class CrawlWebsiteSpider(ArachnadoSpider):
         if not isinstance(response, HtmlResponse):
             self.logger.info("non-HTML response is skipped: %s" % response.url)
             return
-
         if self.settings.getbool('PREFER_PAGINATION'):
             # Follow pagination links; pagination is not a subject of
             # a max depth limit. This also prioritizes pagination links because
@@ -105,9 +109,7 @@ class CrawlWebsiteSpider(ArachnadoSpider):
             with _dont_increase_depth(response):
                 for url in self._pagination_urls(response):
                     yield scrapy.Request(url, meta={'is_page': True})
-
         for link in self.get_links(response):
-            print(link.url)
             if link_looks_like_logout(link):
                 continue
             yield scrapy.Request(link.url, self.parse)
@@ -128,33 +130,116 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     """
     """
     name = 'onionwide'
+    download_maxsize = 1024 * 1024 * 5
     start_urls = None
     file_feed = None
-    custom_settings = {
-        'DEPTH_LIMIT': 10,
-    }
+    link_ext_allow = None
+    use_splash = False
+    splash_script = None
+    processed_urls = None
+    processed_netloc = None
+    only_landing_screens = True
+    out_file_dir = "/media/sf_temp/st"
 
     def __init__(self, *args, **kwargs):
         super(WideOnionCrawlSpider, self).__init__(*args, **kwargs)
         self.start_urls = kwargs.get("start_urls", [])
         self.file_feed = kwargs.get("file_feed", None)
+        self.link_ext_allow = kwargs.get("link_ext_allow", "https?:\/\/[^\/]*\.onion")
+        self.use_splash = kwargs.get("use_splash", False)
+        self.only_landing_screens = kwargs.get("only_landing_screens", True)
+        if self.use_splash:
+            self.splash_script = pkgutil.get_data("arachnado", "lua/info.lua").decode("utf-8")
+            self.processed_urls = set([])
+            self.processed_netloc = set([])
+            self.out_file_num = 0
 
     def start_requests(self):
         self.logger.info("Started job %s (mongo id=%s)",    self.crawl_id, self.motor_job_id)
         if self.start_urls:
             for url in self.start_urls:
-                fixed_url = add_scheme_if_missing(url)
-                yield scrapy.Request(fixed_url, self.parse)
+                yield self.create_request(url, self.parse)
         if self.file_feed:
             with open(self.file_feed, "r") as urls_file:
                 for url in urls_file:
-                    fixed_url = add_scheme_if_missing(url)
-                    yield scrapy.Request(fixed_url, self.parse)
+                    yield self.create_request(url, self.parse)
+
+    def create_request(self,
+                           url,
+                           callback,
+                           cookies={},
+                           add_args={},
+                           add_meta={},
+                           ):
+        fixed_url = add_scheme_if_missing(url)
+
+        meta = {}
+        meta.update(add_meta)
+        if not self.use_splash:
+            return scrapy.Request(fixed_url, callback,  meta=meta)
+        elif fixed_url not in self.processed_urls:
+            self.processed_urls.add(fixed_url)
+            netloc = get_domain(fixed_url)
+            self.processed_netloc.add(netloc)
+            if netloc in self.processed_netloc and self.only_landing_screens:
+                return scrapy.Request(fixed_url, callback,  meta=meta)
+            else:
+                meta.update({"url": fixed_url})
+                endpoint = "execute"
+                args = {'lua_source': self.splash_script, "cookies": cookies}
+                args.update(add_args)
+                return SplashRequest(url=fixed_url,
+                                    callback=callback,
+                                    args=args,
+                                    endpoint=endpoint,
+                                    dont_filter=True,
+                                    meta=meta,
+                    )
+
+    def parse(self, response):
+        if not isinstance(response, HtmlResponse) and not isinstance(response, SplashResponse):
+            self.logger.info("non-HTML response is skipped: %s" % response.url)
+            return
+        # print("-- 2")
+        # print(dir(response))
+        # print(len(response.body))
+        if self.settings.getbool('PREFER_PAGINATION'):
+            # Follow pagination links; pagination is not a subject of
+            # a max depth limit. This also prioritizes pagination links because
+            # depth is not increased for them.
+            with _dont_increase_depth(response):
+                for url in self._pagination_urls(response):
+                    # print("---------------" + url)
+                    yield self.create_request(url, self.parse, add_meta={'is_page': True})
+                    # yield scrapy.Request(url, meta={'is_page': True})
+        for link in self.get_links(response):
+            if link_looks_like_logout(link):
+                continue
+            # print("-----" + link.url)
+            # yield scrapy.Request(link.url, self.parse)
+            yield self.create_request(link.url, self.parse)
+        # print("--- 0.1")
+        # parent_res = super(WideOnionCrawlSpider, self).parse(response)
+        # # for res in parent_res:
+        # #     yield res
+        if self.use_splash:
+            # print("--- 0.2")
+            splash_res = extract_splash_response(response)
+            if splash_res:
+                # self.out_file_num += 1
+                # store_file("{}.html".format(self.out_file_num),
+                #                          self.out_file_dir, splash_res["html"])
+                # store_img("{}.png".format(self.out_file_num),
+                #                          self.out_file_dir, splash_res["png"])
+                item = SiteScreenshotItem()
+                item["url"] = splash_res["url"]
+                item["png_image"] = splash_res["png"]
+                yield item
 
     @property
     def link_extractor(self):
         return LinkExtractor(
-            allow="https?:\/\/[^\/]*\.onion",
+            allow=self.link_ext_allow,
             canonicalize=False,
         )
 
@@ -170,3 +255,53 @@ def _dont_increase_depth(response):
         yield
     finally:
         response.meta['depth'] += 1
+
+
+import os
+import logging
+from scrapy_splash.request import SplashRequest
+from io import StringIO
+import base64
+
+
+def extract_splash_response(response):
+    if response.status != 200:
+        logging.error(response.body)
+    else:
+        splash_res = response.data
+        return splash_res
+    return None
+
+def store_img(file_name, storage_dir, img_content):
+    image_bytes = base64.b64decode(img_content)
+    full_path = os.path.join(storage_dir, file_name)
+    with open(full_path, "wb") as fout:
+        fout.write(image_bytes)
+    return full_path
+
+
+def store_file(file_name, storage_dir, file_content):
+    full_path = os.path.join(storage_dir, file_name)
+    with open(full_path, "w") as fout:
+        fout.write(file_content)
+    return full_path
+
+
+def img_convert(image_splash):
+    image_bytes = base64.b64decode(image_splash)
+    return image_bytes
+
+
+def get_domain(url):
+    domain = urlsplit(url).netloc
+    return re.sub(r'^www\.', '', domain)
+
+
+import scrapy
+
+
+class SiteScreenshotItem(scrapy.Item):
+    url = scrapy.Field()
+    png_image = scrapy.Field()
+
+

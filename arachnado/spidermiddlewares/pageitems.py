@@ -25,7 +25,7 @@ class PageItemsMiddleware(object):
         return [page_item] + requests
 
     def get_page_item(self, response, items, type_='page'):
-        return {
+        page_item = {
             'crawled_at': datetime.datetime.utcnow(),
             'url': response.url,
             'status': response.status,
@@ -35,3 +35,6 @@ class PageItemsMiddleware(object):
             'items': items,
             '_type': type_,
         }
+        if "url" in response.meta:
+            page_item["url"] = response.meta["url"]
+        return page_item

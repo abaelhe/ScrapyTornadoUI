@@ -56,6 +56,8 @@ DOWNLOADER_MIDDLEWARES = {
     'autologin_middleware.AutologinMiddleware': 605,
     'scrapy.downloadermiddlewares.cookies.CookiesMiddleware': None,
     'autologin_middleware.ExposeCookiesMiddleware': 700,
+    'scrapy_splash.SplashCookiesMiddleware': 723,
+    'scrapy_splash.SplashMiddleware': 725,
 }
 
 ITEM_PIPELINES = {

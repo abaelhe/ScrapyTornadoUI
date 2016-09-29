@@ -139,6 +139,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     processed_urls = None
     processed_netloc = None
     only_landing_screens = True
+    splash_in_parallel = True
     out_file_dir = "/media/sf_temp/st"
 
     def __init__(self, *args, **kwargs):
@@ -148,6 +149,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         self.link_ext_allow = kwargs.get("link_ext_allow", "https?:\/\/[^\/]*\.onion")
         self.use_splash = kwargs.get("use_splash", False)
         self.only_landing_screens = kwargs.get("only_landing_screens", True)
+        self.splash_in_parallel = kwargs.get("splash_in_parallel", True)
         if self.use_splash:
             self.splash_script = pkgutil.get_data("arachnado", "lua/info.lua").decode("utf-8")
             self.processed_urls = set([])
@@ -156,13 +158,16 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
 
     def start_requests(self):
         self.logger.info("Started job %s (mongo id=%s)",    self.crawl_id, self.motor_job_id)
+        req_urls = []
         if self.start_urls:
-            for url in self.start_urls:
-                yield self.create_request(url, self.parse)
+            req_urls.extend(self.start_urls)
         if self.file_feed:
             with open(self.file_feed, "r") as urls_file:
                 for url in urls_file:
-                    yield self.create_request(url, self.parse)
+                    req_urls.append(url)
+        for url in req_urls:
+            for req in self.create_request(url, self.parse):
+                yield req
 
     def create_request(self,
                            url,
@@ -172,23 +177,24 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                            add_meta={},
                            ):
         fixed_url = add_scheme_if_missing(url)
-
         meta = {}
         meta.update(add_meta)
         if not self.use_splash:
-            return scrapy.Request(fixed_url, callback,  meta=meta)
+            yield scrapy.Request(fixed_url, callback,  meta=meta)
         elif fixed_url not in self.processed_urls:
             self.processed_urls.add(fixed_url)
             netloc = get_domain(fixed_url)
             self.processed_netloc.add(netloc)
             if netloc in self.processed_netloc and self.only_landing_screens:
-                return scrapy.Request(fixed_url, callback,  meta=meta)
+                yield scrapy.Request(fixed_url, callback,  meta=meta)
             else:
+                if self.splash_in_parallel:
+                    yield scrapy.Request(fixed_url, callback,  meta=meta)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
                 args = {'lua_source': self.splash_script, "cookies": cookies}
                 args.update(add_args)
-                return SplashRequest(url=fixed_url,
+                yield SplashRequest(url=fixed_url,
                                     callback=callback,
                                     args=args,
                                     endpoint=endpoint,
@@ -210,14 +216,16 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             with _dont_increase_depth(response):
                 for url in self._pagination_urls(response):
                     # print("---------------" + url)
-                    yield self.create_request(url, self.parse, add_meta={'is_page': True})
+                    for req in self.create_request(url, self.parse, add_meta={'is_page': True}):
+                        yield req
                     # yield scrapy.Request(url, meta={'is_page': True})
         for link in self.get_links(response):
             if link_looks_like_logout(link):
                 continue
             # print("-----" + link.url)
             # yield scrapy.Request(link.url, self.parse)
-            yield self.create_request(link.url, self.parse)
+            for req in self.create_request(link.url, self.parse):
+                yield req
         # print("--- 0.1")
         # parent_res = super(WideOnionCrawlSpider, self).parse(response)
         # # for res in parent_res:

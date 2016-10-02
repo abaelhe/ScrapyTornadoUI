@@ -184,7 +184,6 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         elif fixed_url not in self.processed_urls:
             self.processed_urls.add(fixed_url)
             netloc = get_domain(fixed_url)
-            self.processed_netloc.add(netloc)
             if netloc in self.processed_netloc and self.only_landing_screens:
                 yield scrapy.Request(fixed_url, callback,  meta=meta)
             else:
@@ -201,6 +200,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                                     dont_filter=True,
                                     meta=meta,
                     )
+            self.processed_netloc.add(netloc)
 
     def parse(self, response):
         if not isinstance(response, HtmlResponse) and not isinstance(response, SplashResponse):
@@ -230,7 +230,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         # parent_res = super(WideOnionCrawlSpider, self).parse(response)
         # # for res in parent_res:
         # #     yield res
-        if self.use_splash:
+        if self.use_splash and isinstance(response, SplashResponse):
             # print("--- 0.2")
             splash_res = extract_splash_response(response)
             if splash_res:

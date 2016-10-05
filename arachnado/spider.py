@@ -14,6 +14,7 @@ import pkgutil
 import json
 import re
 from urllib.parse import urlsplit
+from scrapy_redis import RedisMixin
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -253,6 +254,25 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
 
     def should_drop_request(self, request):
         return False
+
+
+class RedisWideOnionCrawlSpider(RedisMixin, CrawlWebsiteSpider):
+    """
+    redis-cli lpush onionqueue:start_urls http://google.com
+    """
+    name = 'onionqueue'
+
+    custom_settings = {
+        'SCHEDULER':"scrapy_redis.scheduler.Scheduler",
+        'DUPEFILTER_CLASS': "scrapy_redis.dupefilter.RFPDupeFilter"
+    }
+
+    @classmethod
+    def from_crawler(self, crawler, *args, **kwargs):
+        obj = super(RedisWideOnionCrawlSpider, self).from_crawler(crawler, *args, **kwargs)
+        obj.setup_redis(crawler)
+        return obj
+
 
 
 @contextlib.contextmanager

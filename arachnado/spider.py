@@ -14,7 +14,7 @@ import pkgutil
 import json
 import re
 from urllib.parse import urlsplit
-from scrapy_redis import RedisMixin
+from scrapy_redis.spiders import RedisMixin
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -258,7 +258,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
 
 class RedisWideOnionCrawlSpider(RedisMixin, CrawlWebsiteSpider):
     """
-    redis-cli lpush onionqueue:start_urls http://google.com
+    redis-cli lpush onionqueue:start_urls http://ya.ru
     """
     name = 'onionqueue'
 
@@ -272,6 +272,23 @@ class RedisWideOnionCrawlSpider(RedisMixin, CrawlWebsiteSpider):
         obj = super(RedisWideOnionCrawlSpider, self).from_crawler(crawler, *args, **kwargs)
         obj.setup_redis(crawler)
         return obj
+
+    def make_request_from_data(self, data):
+        url = data.decode("utf-8")
+        # print(data)
+        # print(type(data))
+        # By default, data is an URL.
+        if '://' in url:
+            return self.make_requests_from_url(url)
+        else:
+            self.logger.error("Unexpected URL from '%s': %r", self.redis_key, url)
+
+    @property
+    def link_extractor(self):
+        return LinkExtractor(
+            allow=self.link_ext_allow,
+            canonicalize=False,
+        )
 
 
 

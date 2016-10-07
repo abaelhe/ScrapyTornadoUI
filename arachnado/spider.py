@@ -137,7 +137,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     link_ext_allow = None
     use_splash = False
     splash_script = None
-    processed_urls = None
+    # processed_urls = None
     processed_netloc = None
     only_landing_screens = True
     splash_in_parallel = True
@@ -154,7 +154,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         self.splash_in_parallel = kwargs.get("splash_in_parallel", True)
         if self.use_splash:
             self.splash_script = pkgutil.get_data("arachnado", "lua/info.lua").decode("utf-8")
-            self.processed_urls = set([])
+            # self.processed_urls = set([])
             self.processed_netloc = set([])
             self.out_file_num = 0
 
@@ -184,8 +184,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         if not self.use_splash:
             print("1")
             yield scrapy.Request(fixed_url, callback,  meta=meta)
-        elif fixed_url not in self.processed_urls:
-            self.processed_urls.add(fixed_url)
+        else:
             netloc = get_domain(fixed_url)
             if netloc in self.processed_netloc and self.only_landing_screens:
                 print("2")

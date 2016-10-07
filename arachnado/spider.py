@@ -6,7 +6,7 @@ import logging
 import scrapy
 from scrapy.linkextractors import LinkExtractor
 from scrapy.http.response.html import HtmlResponse
-from scrapy_splash.response import SplashResponse
+from scrapy_splash.response import SplashResponse, SplashTextResponse
 from autologin_middleware import link_looks_like_logout
 
 from arachnado.utils.misc import add_scheme_if_missing, get_netloc
@@ -142,6 +142,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     only_landing_screens = True
     splash_in_parallel = True
     out_file_dir = "/media/sf_temp/st"
+    handle_httpstatus_list = [400, 404, 401, 403, 301, 302, 500, 520, 504]
 
     def __init__(self, *args, **kwargs):
         super(WideOnionCrawlSpider, self).__init__(*args, **kwargs)
@@ -181,19 +182,23 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         meta = {}
         meta.update(add_meta)
         if not self.use_splash:
+            print("1")
             yield scrapy.Request(fixed_url, callback,  meta=meta)
         elif fixed_url not in self.processed_urls:
             self.processed_urls.add(fixed_url)
             netloc = get_domain(fixed_url)
             if netloc in self.processed_netloc and self.only_landing_screens:
+                print("2")
                 yield scrapy.Request(fixed_url, callback,  meta=meta)
             else:
                 if self.splash_in_parallel:
+                    print("3")
                     yield scrapy.Request(fixed_url, callback,  meta=meta)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
                 args = {'lua_source': self.splash_script, "cookies": cookies}
                 args.update(add_args)
+                print("4")
                 yield SplashRequest(url=fixed_url,
                                     callback=callback,
                                     args=args,
@@ -204,8 +209,9 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             self.processed_netloc.add(netloc)
 
     def parse(self, response):
-        if not isinstance(response, HtmlResponse) and not isinstance(response, SplashResponse):
-            self.logger.info("non-HTML response is skipped: %s" % response.url)
+        is_splash_resp = isinstance(response, SplashResponse) or isinstance(response, SplashTextResponse)
+        if not isinstance(response, HtmlResponse) and not is_splash_resp:
+            self.logger.info("not usable respose type response is skipped: {} from {}".format(type(response), response.url))
             return
         # print("-- 2")
         # print(dir(response))
@@ -231,7 +237,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         # parent_res = super(WideOnionCrawlSpider, self).parse(response)
         # # for res in parent_res:
         # #     yield res
-        if self.use_splash and isinstance(response, SplashResponse):
+        if self.use_splash and is_splash_resp:
             # print("--- 0.2")
             splash_res = extract_splash_response(response)
             if splash_res:
@@ -256,9 +262,8 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         return False
 
 
-class RedisWideOnionCrawlSpider(RedisMixin, CrawlWebsiteSpider):
+class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
     """
-    redis-cli lpush onionqueue:start_urls http://ya.ru
     """
     name = 'onionqueue'
 
@@ -273,15 +278,24 @@ class RedisWideOnionCrawlSpider(RedisMixin, CrawlWebsiteSpider):
         obj.setup_redis(crawler)
         return obj
 
-    def make_request_from_data(self, data):
-        url = data.decode("utf-8")
-        # print(data)
-        # print(type(data))
-        # By default, data is an URL.
-        if '://' in url:
-            return self.make_requests_from_url(url)
-        else:
-            self.logger.error("Unexpected URL from '%s': %r", self.redis_key, url)
+    def next_requests(self):
+        use_set = self.settings.getbool('REDIS_START_URLS_AS_SET')
+        fetch_one = self.server.spop if use_set else self.server.lpop
+        found = 0
+        while found < self.redis_batch_size:
+            data = fetch_one(self.redis_key)
+            if not data:
+                break
+            url = data.decode("utf-8")
+            reqs = self.create_request(url, self.parse)
+            if reqs:
+                for req in reqs:
+                    yield req
+                    found += 1
+            else:
+                self.logger.debug("Request not made from data: %r", data)
+        if found:
+            self.logger.debug("Read %s requests from '%s'", found, self.redis_key)
 
     @property
     def link_extractor(self):

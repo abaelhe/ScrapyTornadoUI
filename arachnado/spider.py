@@ -59,7 +59,7 @@ class CrawlWebsiteSpider(ArachnadoSpider):
     """
     name = 'generic'
     custom_settings = {
-        'DEPTH_LIMIT': 10,
+        'DEPTH_LIMIT': 2,
     }
 
     def __init__(self, *args, **kwargs):

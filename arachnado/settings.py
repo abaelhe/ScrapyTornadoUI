@@ -62,6 +62,7 @@ DOWNLOADER_MIDDLEWARES = {
 
 ITEM_PIPELINES = {
     'arachnado.pipelines.mongoexport.MongoExportPipeline': 10,
+    'arachnado.pipelines.esexport.ElasticSearchExportPipeline': 20,
 }
 
 EXTENSIONS = {

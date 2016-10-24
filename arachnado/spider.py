@@ -59,7 +59,7 @@ class CrawlWebsiteSpider(ArachnadoSpider):
     """
     name = 'generic'
     custom_settings = {
-        'DEPTH_LIMIT': 2,
+        'DEPTH_LIMIT': 10,
     }
 
     def __init__(self, *args, **kwargs):
@@ -142,7 +142,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     only_landing_screens = True
     splash_in_parallel = True
     out_file_dir = "/media/sf_temp/st"
-    handle_httpstatus_list = [400, 404, 401, 403, 301, 302, 500, 520, 504]
+    handle_httpstatus_list = [400, 404, 401, 403, 500, 520, 504]
 
     def __init__(self, *args, **kwargs):
         super(WideOnionCrawlSpider, self).__init__(*args, **kwargs)
@@ -182,22 +182,22 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         meta = {}
         meta.update(add_meta)
         if not self.use_splash:
-            print("1")
+            # print("1")
             yield scrapy.Request(fixed_url, callback,  meta=meta)
         else:
             netloc = get_domain(fixed_url)
             if netloc in self.processed_netloc and self.only_landing_screens:
-                print("2")
+                # print("2")
                 yield scrapy.Request(fixed_url, callback,  meta=meta)
             else:
                 if self.splash_in_parallel:
-                    print("3")
+                    # print("3")
                     yield scrapy.Request(fixed_url, callback,  meta=meta)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
                 args = {'lua_source': self.splash_script, "cookies": cookies}
                 args.update(add_args)
-                print("4")
+                # print("4")
                 yield SplashRequest(url=fixed_url,
                                     callback=callback,
                                     args=args,

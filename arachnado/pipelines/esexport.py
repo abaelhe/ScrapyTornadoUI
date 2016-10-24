@@ -7,6 +7,7 @@ import copy
 from tornado import gen
 from tornado.ioloop import PeriodicCallback
 import elasticsearch as es
+from elasticsearch.helpers import bulk
 import scrapy
 from scrapy.exceptions import NotConfigured
 from scrapy import signals
@@ -36,13 +37,13 @@ class ElasticSearchExportPipeline(object):
     def __init__(self, crawler):
         self.crawler = crawler
         settings = self.crawler.settings
-        if not settings.getbool('ES_EXPORT_ENABLED', False):
-            raise NotConfigured
-        self.job_id_key = settings.get('ES_EXPORT_JOBID_KEY', "job_id")
-        self.index_name = settings.get('ES_INDEX_NAME')
-        self.type_name = settings.get('ES_TYPE_NAME')
-        self.es_url = settings.get('ES_URL')
-        self.es_client = es.Elasticsearch([self.es_url])
+        self.es_export = settings.getbool('ES_EXPORT_ENABLED', False)
+        if self.es_export:
+            self.job_id_key = settings.get('ES_EXPORT_JOBID_KEY', "job_id")
+            self.index_name = settings.get('ES_INDEX_NAME')
+            self.type_name = settings.get('ES_TYPE_NAME')
+            self.es_url = settings.get('ES_URL')
+            self.es_client = es.Elasticsearch([self.es_url])
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -50,23 +51,25 @@ class ElasticSearchExportPipeline(object):
 
     @tt_coroutine
     def process_item(self, item, spider):
-        es_item = scrapy_item_to_dict(item)
-        if self.job_id_key:
-            es_item[self.job_id_key] = spider.crawl_id
-        try:
-            index_action = {
-                '_index': self.index_name,
-                '_type': self.type_name,
-                '_source': es_item
-            }
-            es.helpers.bulk(self.es_client, [index_action])
-            self.crawler.stats.inc_value("elasticsearch_export/items_stored_count")
-        except Exception as e:
-            self.crawler.stats.inc_value("elasticsearch/store_error_count")
-            self.crawler.stats.inc_value("elasticsearch/store_error_count/" +
-                                         e.__class__.__name__)
-            logger.error("Error storing item", exc_info=True, extra={
-                'crawler': self.crawler
-            })
+        if self.es_export:
+            es_item = scrapy_item_to_dict(item)
+            es_item["_scrapy_type"] = es_item.pop("_type", None)
+            if self.job_id_key:
+                es_item[self.job_id_key] = spider.crawl_id
+            try:
+                index_action = {
+                    '_index': self.index_name,
+                    '_type': self.type_name,
+                    '_source': es_item
+                }
+                bulk(self.es_client, [index_action])
+                self.crawler.stats.inc_value("elasticsearch_export/items_stored_count")
+            except Exception as e:
+                self.crawler.stats.inc_value("elasticsearch/store_error_count")
+                self.crawler.stats.inc_value("elasticsearch/store_error_count/" +
+                                             e.__class__.__name__)
+                logger.error("Error storing item", exc_info=True, extra={
+                    'crawler': self.crawler
+                })
 
 

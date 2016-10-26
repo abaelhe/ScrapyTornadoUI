@@ -177,22 +177,23 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                            cookies={},
                            add_args={},
                            add_meta={},
+                           priority=0
                            ):
         fixed_url = add_scheme_if_missing(url)
         meta = {}
         meta.update(add_meta)
         if not self.use_splash:
             # print("1")
-            yield scrapy.Request(fixed_url, callback,  meta=meta)
+            yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
         else:
             netloc = get_domain(fixed_url)
             if netloc in self.processed_netloc and self.only_landing_screens:
                 # print("2")
-                yield scrapy.Request(fixed_url, callback,  meta=meta)
+                yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
             else:
                 if self.splash_in_parallel:
                     # print("3")
-                    yield scrapy.Request(fixed_url, callback,  meta=meta)
+                    yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
                 args = {'lua_source': self.splash_script, "cookies": cookies}
@@ -215,6 +216,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         # print("-- 2")
         # print(dir(response))
         # print(len(response.body))
+        req_priority = 1000 - response.meta["depth"]
         if self.settings.getbool('PREFER_PAGINATION'):
             # Follow pagination links; pagination is not a subject of
             # a max depth limit. This also prioritizes pagination links because
@@ -230,7 +232,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                 continue
             # print("-----" + link.url)
             # yield scrapy.Request(link.url, self.parse)
-            for req in self.create_request(link.url, self.parse):
+            for req in self.create_request(link.url, self.parse, priority=req_priority):
                 yield req
         # print("--- 0.1")
         # parent_res = super(WideOnionCrawlSpider, self).parse(response)

@@ -9,7 +9,9 @@ SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 LOG_UNSERIALIZABLE_REQUESTS = True
 DISK_QUEUES_ROOT = './.scrapy/jobs'
-
+SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
+# SCHEDULER = "arachnado.scheduler.Scheduler"
 # Turn it ON if the goal is to crawl the whole webiste
 # (vs crawling most recent content):
 PREFER_PAGINATION = False

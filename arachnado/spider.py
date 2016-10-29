@@ -143,6 +143,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     splash_in_parallel = True
     out_file_dir = "/media/sf_temp/st"
     handle_httpstatus_list = [400, 404, 401, 403, 500, 520, 504]
+    start_priority = 1000
 
     def __init__(self, *args, **kwargs):
         super(WideOnionCrawlSpider, self).__init__(*args, **kwargs)
@@ -216,7 +217,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         # print("-- 2")
         # print(dir(response))
         # print("{} : {}".format(response.meta["depth"], response.url))
-        req_priority = 1000 - response.meta["depth"]
+        req_priority = self.start_priority - response.meta["depth"]
         if self.settings.getbool('PREFER_PAGINATION'):
             # Follow pagination links; pagination is not a subject of
             # a max depth limit. This also prioritizes pagination links because
@@ -232,7 +233,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                 continue
             # print("-----" + link.url)
             # yield scrapy.Request(link.url, self.parse)
-            for req in self.create_request(link.url, self.parse, priority=req_priority):
+            for req in self.create_request(link.url.replace("\n", ""), self.parse, priority=req_priority):
                 yield req
         # print("--- 0.1")
         # parent_res = super(WideOnionCrawlSpider, self).parse(response)
@@ -288,11 +289,9 @@ class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
             if not data:
                 break
             url = data.decode("utf-8")
-            reqs = self.create_request(url, self.parse)
+            reqs = self.create_request(url, self.parse, priority=(self.start_priority + 1))
             if reqs:
                 for req in reqs:
-                    if "depth" not in req.meta:
-                        req.meta["depth"] = 0
                     yield req
                     found += 1
             else:

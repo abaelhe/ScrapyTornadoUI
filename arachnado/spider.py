@@ -215,7 +215,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             return
         # print("-- 2")
         # print(dir(response))
-        # print(len(response.body))
+        # print("{} : {}".format(response.meta["depth"], response.url))
         req_priority = 1000 - response.meta["depth"]
         if self.settings.getbool('PREFER_PAGINATION'):
             # Follow pagination links; pagination is not a subject of
@@ -291,6 +291,8 @@ class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
             reqs = self.create_request(url, self.parse)
             if reqs:
                 for req in reqs:
+                    if "depth" not in req.meta:
+                        req.meta["depth"] = 0
                     yield req
                     found += 1
             else:

@@ -15,6 +15,7 @@ import json
 import re
 from urllib.parse import urlsplit
 from scrapy_redis.spiders import RedisMixin
+from scrapy_redis.scheduler import Scheduler
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -269,29 +270,34 @@ class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
     """
     name = 'onionqueue'
 
-    custom_settings = {
-        'SCHEDULER':"scrapy_redis.scheduler.Scheduler",
-        'DUPEFILTER_CLASS': "scrapy_redis.dupefilter.RFPDupeFilter"
-    }
-
     @classmethod
     def from_crawler(self, crawler, *args, **kwargs):
         obj = super(RedisWideOnionCrawlSpider, self).from_crawler(crawler, *args, **kwargs)
         obj.setup_redis(crawler)
+        obj.stats = crawler.stats
         return obj
 
     def next_requests(self):
+        # print("--01")
         use_set = self.settings.getbool('REDIS_START_URLS_AS_SET')
         fetch_one = self.server.spop if use_set else self.server.lpop
         found = 0
+        # print("--02")
+        # print(self.redis_key)
         while found < self.redis_batch_size:
             data = fetch_one(self.redis_key)
+            # print("--03")
+            # print(data)
             if not data:
                 break
+            # print("--04")
             url = data.decode("utf-8")
+            # print(url)
             reqs = self.create_request(url, self.parse, priority=(self.start_priority + 1))
             if reqs:
+                # print("--05")
                 for req in reqs:
+                    # print("--06")
                     yield req
                     found += 1
             else:
@@ -305,6 +311,27 @@ class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
             allow=self.link_ext_allow,
             canonicalize=False,
         )
+
+
+class RedisCheatOnionCrawlSpider(RedisWideOnionCrawlSpider):
+    name = 'onioncheat'
+
+    def start_requests(self):
+        print(self.settings["SCHEDULER"])
+        scheduler = Scheduler.from_settings(self.settings)
+        scheduler.open(self)
+        scheduler.stats = self.stats
+        print("scheduler created")
+        print(scheduler.server)
+        first_req = None
+        for req in self.next_requests():
+            print(req.url)
+            if not first_req:
+                first_req = req
+            else:
+                scheduler.enqueue_request(req)
+        if first_req:
+            yield first_req
 
 
 

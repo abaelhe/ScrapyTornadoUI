@@ -16,6 +16,7 @@ import re
 from urllib.parse import urlsplit
 from scrapy_redis.spiders import RedisMixin
 from scrapy_redis.scheduler import Scheduler
+from w3lib.http import basic_auth_header
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -194,7 +195,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                 yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
             else:
                 if self.splash_in_parallel:
-                    # print("3")
+                    print("3")
                     yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
@@ -244,11 +245,11 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             # print("--- 0.2")
             splash_res = extract_splash_response(response)
             if splash_res:
-                # self.out_file_num += 1
-                # store_file("{}.html".format(self.out_file_num),
-                #                          self.out_file_dir, splash_res["html"])
-                # store_img("{}.png".format(self.out_file_num),
-                #                          self.out_file_dir, splash_res["png"])
+                self.out_file_num += 1
+                store_file("{}.html".format(self.out_file_num),
+                                         self.out_file_dir, splash_res["html"])
+                store_img("{}.png".format(self.out_file_num),
+                                         self.out_file_dir, splash_res["png"])
                 item = SiteScreenshotItem()
                 item["url"] = splash_res["url"]
                 item["png_image"] = splash_res["png"]

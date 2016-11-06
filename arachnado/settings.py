@@ -52,15 +52,22 @@ SPIDER_MIDDLEWARES = {
     'arachnado.spidermiddlewares.pageitems.PageItemsMiddleware': 100,
 }
 
+HTTPCACHE_ENABLED = True
+
 DOWNLOADER_MIDDLEWARES = {
-    'arachnado.downloadermiddlewares.proxyfromsettings.ProxyFromSettingsMiddleware': 10,
-    'arachnado.downloadermiddlewares.droprequests.DropRequestsMiddleware': 20,
+    'arachnado.pagecache.httpcache.HttpCacheMiddleware': 230,
+    'arachnado.downloadermiddlewares.proxyfromsettings.ProxyFromSettingsMiddleware': 240,
+    'arachnado.downloadermiddlewares.droprequests.DropRequestsMiddleware': 250,
     'autologin_middleware.AutologinMiddleware': 605,
     'scrapy.downloadermiddlewares.cookies.CookiesMiddleware': None,
     'autologin_middleware.ExposeCookiesMiddleware': 700,
     'scrapy_splash.SplashCookiesMiddleware': 723,
     'scrapy_splash.SplashMiddleware': 725,
+    # 'scrapy.downloadermiddlewares.httpauth.HttpAuthMiddleware': 720,
 }
+
+# HTTPCACHE_STORAGE = 'arachnado.pagecache.mongo.MongoCacheStorage'
+
 
 ITEM_PIPELINES = {
     'arachnado.pipelines.mongoexport.MongoExportPipeline': 10,

@@ -8,7 +8,7 @@ class MongoCacheStorage(object):
     responses"""
 
     def __init__(self, settings):
-        self.db_name = settings.get('MOTOR_PIPELINE_DB_NAME')
+        self.db_name = settings.get('MOTOR_PIPELINE_DB_NAME', 'arachnado')
         self.db_uri = settings.get('MOTOR_PIPELINE_URI')
 
     def open_spider(self, spider):

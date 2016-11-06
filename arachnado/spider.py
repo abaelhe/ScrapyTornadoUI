@@ -213,7 +213,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     def parse(self, response):
         is_splash_resp = isinstance(response, SplashResponse) or isinstance(response, SplashTextResponse)
         if not isinstance(response, HtmlResponse) and not is_splash_resp:
-            self.logger.info("not usable respose type response is skipped: {} from {}".format(type(response), response.url))
+            self.logger.info("not usable response type skipped: {} from {}".format(type(response), response.url))
             return
         # print("-- 2")
         # print(dir(response))
@@ -317,15 +317,15 @@ class RedisCheatOnionCrawlSpider(RedisWideOnionCrawlSpider):
     name = 'onioncheat'
 
     def start_requests(self):
-        print(self.settings["SCHEDULER"])
+        # print(self.settings["SCHEDULER"])
         scheduler = Scheduler.from_settings(self.settings)
         scheduler.open(self)
         scheduler.stats = self.stats
-        print("scheduler created")
-        print(scheduler.server)
+        # print("scheduler created")
+        # print(scheduler.server)
         first_req = None
         for req in self.next_requests():
-            print(req.url)
+            # print(req.url)
             if not first_req:
                 first_req = req
             else:

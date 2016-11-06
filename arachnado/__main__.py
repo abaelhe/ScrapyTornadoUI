@@ -61,9 +61,14 @@ def main(port, host, start_manhole, manhole_port, manhole_host, loglevel, opts):
     from arachnado.domain_crawlers import DomainCrawlers
     from arachnado.cron import Cron
 
+
     settings = {
         'LOG_LEVEL': loglevel,
     }
+
+    main_opts = opts['arachnado']
+    if "logfile" in main_opts:
+        settings['LOG_FILE'] = main_opts["logfile"]
 
     # mongo export options
     storage_opts = opts['arachnado.storage']

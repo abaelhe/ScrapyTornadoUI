@@ -10,7 +10,7 @@ from scrapy.xlib.tx import ResponseFailed
 
 
 class HttpCacheMiddleware(object):
-
+    #TODO: expiration for search engine
     DOWNLOAD_EXCEPTIONS = (defer.TimeoutError, TimeoutError, DNSLookupError,
                            ConnectionRefusedError, ConnectionDone, ConnectError,
                            ConnectionLost, TCPTimedOutError, ResponseFailed,

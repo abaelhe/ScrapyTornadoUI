@@ -19,22 +19,32 @@ class PageItemsMiddleware(object):
 
     def process_spider_output(self, response, result, spider):
         result = list(result)
-        items = [r for r in result if isinstance(r, scrapy.Item)]
-        requests = [r for r in result if isinstance(r, scrapy.Request)]
-        page_item = self.get_page_item(response, items)
-        return [page_item] + requests
+        if "mongo_id" not in response.meta:
+            items = [r for r in result if isinstance(r, scrapy.Item)]
+            requests = [r for r in result if isinstance(r, scrapy.Request)]
+            page_item = self.get_page_item(response, items)
+            return [page_item] + requests
+        else:
+            return result
 
     def get_page_item(self, response, items, type_='page'):
-        page_item = {
-            'crawled_at': datetime.datetime.utcnow(),
-            'url': response.url,
-            'status': response.status,
-            'headers': response.headers.to_unicode_dict(),
-            'body': response.body_as_unicode(),
-            'meta': response.meta,
-            'items': items,
-            '_type': type_,
-        }
-        if "url" in response.meta:
-            page_item["url"] = response.meta["url"]
-        return page_item
+            if response.meta.get("unusable", False):
+                page_body = "!REMOVED!"
+            else:
+                try:
+                    page_body = response.body_as_unicode()
+                except:
+                    page_body = "!EXTRACTION_ERROR!"
+            page_item = {
+                'crawled_at': datetime.datetime.utcnow(),
+                'url': response.url,
+                'status': response.status,
+                'headers': response.headers.to_unicode_dict(),
+                'body': page_body,
+                'meta': response.meta,
+                'items': items,
+                '_type': type_,
+            }
+            if "url" in response.meta:
+                page_item["url"] = response.meta["url"]
+            return page_item

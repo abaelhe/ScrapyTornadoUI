@@ -143,7 +143,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     processed_netloc = None
     only_landing_screens = True
     splash_in_parallel = True
-    out_file_dir = "/media/sf_temp/st"
+    out_file_dir = None
     handle_httpstatus_list = [400, 404, 401, 403, 500, 520, 504]
     start_priority = 1000
 
@@ -195,7 +195,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                 yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
             else:
                 if self.splash_in_parallel:
-                    print("3")
+                    # print("3")
                     yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
@@ -213,8 +213,9 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
 
     def parse(self, response):
         is_splash_resp = isinstance(response, SplashResponse) or isinstance(response, SplashTextResponse)
-        if not isinstance(response, HtmlResponse) and not is_splash_resp:
-            self.logger.info("not usable response type skipped: {} from {}".format(type(response), response.url))
+        if not isinstance(response, HtmlResponse) and not is_splash_resp and not response.meta.get("unusable", False):
+            response.meta["unusable"] = True
+            self.logger.warning("not usable response type skipped: {} from {}".format(type(response), response.url))
             return
         # print("-- 2")
         # print(dir(response))
@@ -237,19 +238,16 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             # yield scrapy.Request(link.url, self.parse)
             for req in self.create_request(link.url.replace("\n", ""), self.parse, priority=req_priority):
                 yield req
-        # print("--- 0.1")
-        # parent_res = super(WideOnionCrawlSpider, self).parse(response)
-        # # for res in parent_res:
-        # #     yield res
         if self.use_splash and is_splash_resp:
             # print("--- 0.2")
             splash_res = extract_splash_response(response)
             if splash_res:
                 self.out_file_num += 1
-                store_file("{}.html".format(self.out_file_num),
-                                         self.out_file_dir, splash_res["html"])
-                store_img("{}.png".format(self.out_file_num),
-                                         self.out_file_dir, splash_res["png"])
+                if self.out_file_dir:
+                    store_file("{}.html".format(self.out_file_num),
+                                             self.out_file_dir, splash_res["html"])
+                    store_img("{}.png".format(self.out_file_num),
+                                             self.out_file_dir, splash_res["png"])
                 item = SiteScreenshotItem()
                 item["url"] = splash_res["url"]
                 item["png_image"] = splash_res["png"]

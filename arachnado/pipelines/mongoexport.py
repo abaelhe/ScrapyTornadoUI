@@ -163,7 +163,6 @@ class MongoExportPipeline(object):
     @tt_coroutine
     def process_item(self, item, spider):
         mongo_item = scrapy_item_to_dict(item)
-        print("will store " + mongo_item["url"])
         if self.job_id_key:
             mongo_item[self.job_id_key] = self.job_id
         try:

@@ -37,6 +37,7 @@ class PageItemsMiddleware(object):
                     page_body = "!EXTRACTION_ERROR!"
             page_item = {
                 'crawled_at': datetime.datetime.utcnow(),
+                # TODO: save url in searchable format
                 'url': response.url,
                 'status': response.status,
                 'headers': response.headers.to_unicode_dict(),

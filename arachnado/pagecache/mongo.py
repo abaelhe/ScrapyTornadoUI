@@ -2,6 +2,7 @@ import pymongo
 from scrapy.http import Headers
 from scrapy.responsetypes import responsetypes
 from scrapy_splash import SplashResponse
+from urllib.parse import urlparse, urlunparse, ParseResult
 
 
 class MongoCacheStorage(object):
@@ -26,21 +27,24 @@ class MongoCacheStorage(object):
         self.db.close()
 
     def retrieve_response(self, spider, request):
-        print("--------------------------------------------------")
         if 'splash' in request.meta:
             doc_url = request.meta.get("url", None)
         else:
             doc_url = request.url
-        print("URL: " + doc_url)
         if not doc_url:
             return
-        doc = self.col.find_one({'url': request.url})
+        doc = self.col.find_one({'url': doc_url})
         if doc is None:
-            print("doc not found")
+            url_obj = urlparse(doc_url)
+            url_obj2 = ParseResult(url_obj.scheme, url_obj.netloc, url_obj.path, url_obj.params, url_obj.query, '')
+            search_url = urlunparse(url_obj2)
+            # TODO: remove site specific session id, etc.
+            doc = self.col.find_one({'url': search_url})
+        if doc is None:
+            # print("{} not found".format(search_url))
             return
         status = str(doc.get("status", -1))
         if status not in self.status_codes:
-            print("status")
             return
         url = doc['url']
         headers = Headers(doc['headers'])
@@ -51,8 +55,8 @@ class MongoCacheStorage(object):
             respcls = responsetypes.from_args(headers=headers, url=url)
         response = respcls(url=url, headers=headers, status=status, body=body, request=request)
         response.meta["mongo_id"] = doc["_id"]
-        print("response ready")
         return response
 
     def store_response(self, spider, request, response):
+        # implemented at mongoexport pipeline
         pass

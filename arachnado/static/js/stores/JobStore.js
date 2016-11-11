@@ -27,11 +27,15 @@ export var store = Reflux.createStore({
     },
 
     onSetAll: function (jobs) {
+        console.log("setall")
+        console.log(jobs)
         this.jobs = jobs;
         this.triggerDebounced(jobs);
     },
 
     onUpdateStats: function (crawlId, changes) {
+        console.log("onUpdateStats")
+        console.log(crawlId, changes)
         this.jobs.filter(job => job.id == crawlId).forEach(job => {
             job.stats = Object.assign(job.stats || {}, changes);
         });

@@ -51,7 +51,7 @@ var NoJobPage = React.createClass({
     render: function () {
         return (
             <div>
-                <h2>Job is not found</h2>
+                <h2>Job {this.props.params.id} is not found</h2>
                 <p>This job is either not available or never existed.</p>
                 <Link to="/">
                     <Glyphicon glyph="menu-left"/>&nbsp;

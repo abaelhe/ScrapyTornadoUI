@@ -34,7 +34,8 @@ class Base(object):
         self.queue_client = MongoClient(self.queue_uri)
         self.queue_col = self.queue_client["arachnado"]["queue"]
         self.queue_col.ensure_index('score', unique=False)
-        self.redis_size_limit = self.spider.settings.get('MAX_REDIS_QUEUE_SIZE', 10)
+        self.redis_size_limit = self.spider.settings.get('MAX_REDIS_QUEUE_SIZE', 1000)
+        self.redis_size_trigger_mult = self.spider.settings.get('MAX_REDIS_QUEUE_SIZE_TRIGGER', 0.8)
 
     def _encode_request(self, request):
         """Encode a request object"""
@@ -94,8 +95,12 @@ class SpiderPriorityQueue(Base):
                     self.stats.inc_value('scheduler/composite/to_mongo', spider=self.spider)
         else:
             self._redis_push(request)
-            self.stats.inc_value('scheduler/composite/to_redis', spider=self.spider)
-        self.stats.max_value('scheduler/composite/redis_max_queue', self._redis_len(), spider=self.spider)
+            if self.stats:
+                self.stats.inc_value('scheduler/composite/to_redis', spider=self.spider)
+        redis_queue_size = self._redis_len()
+        if self.stats:
+            self.stats.max_value('scheduler/composite/redis_max_queue', redis_queue_size, spider=self.spider)
+            self.stats.set_value('scheduler/composite/redis_current_queue', redis_queue_size, spider=self.spider)
 
     def _redis_push(self, request):
         data = self._encode_request(request)
@@ -123,7 +128,7 @@ class SpiderPriorityQueue(Base):
         """
         """
         reqs_in_redis = self._redis_len()
-        if (reqs_in_redis < self.redis_size_limit * 0.8):
+        if (reqs_in_redis < self.redis_size_limit * self.redis_size_trigger_mult):
             for result in self.queue_col.find().sort([("score",ASCENDING)]).limit(self.redis_size_limit - reqs_in_redis):
                 # print(result)
                 self.queue_col.remove({"_id":result["_id"]})

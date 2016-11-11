@@ -60,7 +60,7 @@ class MongoExportPipeline(object):
         settings = self.crawler.settings
         if not settings.getbool('MONGO_EXPORT_ENABLED', False):
             raise NotConfigured
-
+        self.job_id = None
         self.job_id_key = settings.get('MONGO_EXPORT_JOBID_KEY')
         self.items_uri = settings.get('MONGO_EXPORT_ITEMS_URI')
         self.jobs_uri = settings.get('MONGO_EXPORT_JOBS_URI')
@@ -100,10 +100,30 @@ class MongoExportPipeline(object):
         return urls
 
     @tt_coroutine
+    def _update_job_id(self, spider):
+        if self.job_id:
+            return
+        else:
+            try:
+                job_cursor = self.jobs_col.find({'id': spider.crawl_id}).limit(1)
+                while (yield job_cursor.fetch_next):
+                    job = job_cursor.next_object()
+                    self.job_id = str(job['_id'])
+                    spider.motor_job_id = str(self.job_id)
+                    self.crawler.stats.set_value("mongo_export/mongo_job_id/restored", self.job_id, spider=spider)
+                    break
+            except Exception:
+                logger.error(
+                    "Can't update job id.", exc_info=True,
+                    extra={'crawler': self.crawler},
+                )
+
+    @tt_coroutine
     def open_spider(self, spider):
         try:
             yield self.items_col.ensure_index(self.job_id_key)
             yield self.jobs_col.ensure_index('id', unique=True)
+            self._update_job_id(spider)
 
             job = yield self.jobs_col.find_and_modify({
                 'id': spider.crawl_id,
@@ -116,6 +136,7 @@ class MongoExportPipeline(object):
                 'options': getattr(spider.crawler, 'start_options', {}),
             }, upsert=True, new=True)
             self.job_id = str(job['_id'])
+            self.crawler.stats.set_value("mongo_export/mongo_job_id/set", self.job_id, spider=spider)
             spider.motor_job_id = str(self.job_id)
             logger.info("Crawl job generated id: %s", self.job_id,
                         extra={'crawler': self.crawler})
@@ -135,6 +156,7 @@ class MongoExportPipeline(object):
 
     @tt_coroutine
     def spider_closed(self, spider, reason, **kwargs):
+        self._update_job_id(spider)
         self._stop_periodic_tasks()
 
         if self.job_id is None:  # what's this?
@@ -153,6 +175,7 @@ class MongoExportPipeline(object):
 
     @tt_coroutine
     def spider_closing(self, spider, reason, **kwargs):
+        self._update_job_id(spider)
         self._stop_periodic_tasks()
         if self.job_id is None:  # what's this?
             return
@@ -162,6 +185,7 @@ class MongoExportPipeline(object):
 
     @tt_coroutine
     def process_item(self, item, spider):
+        self._update_job_id(spider)
         mongo_item = scrapy_item_to_dict(item)
         if self.job_id_key:
             mongo_item[self.job_id_key] = self.job_id
@@ -190,6 +214,8 @@ class MongoExportPipeline(object):
                 'stats_dict': self._get_stats_escaped(),
             }}
         )
+
+
 
     def _stop_periodic_tasks(self):
         if self._dump_pc is not None and self._dump_pc.is_running():

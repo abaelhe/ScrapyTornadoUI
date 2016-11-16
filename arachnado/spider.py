@@ -15,7 +15,7 @@ import json
 import re
 from urllib.parse import urlsplit
 from scrapy_redis.spiders import RedisMixin
-from scrapy_redis.scheduler import Scheduler
+from arachnado.scheduler.scheduler import Scheduler
 from w3lib.http import basic_auth_header
 
 

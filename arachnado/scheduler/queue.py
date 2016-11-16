@@ -138,5 +138,10 @@ class SpiderPriorityQueue(Base):
                     self.stats.inc_value('scheduler/composite/to_redis', spider=self.spider)
         return self._redis_pop()
 
+    def clear(self):
+        """Clear queue/stack"""
+        self.server.delete(self.key)
+        self.queue_col.remove({})
+
 
 __all__ = ['SpiderPriorityQueue', ]

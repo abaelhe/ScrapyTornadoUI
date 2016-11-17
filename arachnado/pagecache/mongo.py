@@ -2,7 +2,7 @@ import pymongo
 from scrapy.http import Headers
 from scrapy.responsetypes import responsetypes
 from scrapy_splash import SplashResponse
-from urllib.parse import urlparse, urlunparse, ParseResult
+from six.moves.urllib.parse import urlparse, urlunparse, ParseResult
 
 
 class MongoCacheStorage(object):

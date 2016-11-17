@@ -52,6 +52,8 @@ DOWNLOADER = 'arachnado.crawler_process.ArachnadoDownloader'
 
 SPIDER_MIDDLEWARES = {
     'arachnado.spidermiddlewares.pageitems.PageItemsMiddleware': 100,
+    'arachnado.spidermiddlewares.depth.DepthMiddleware': 150,
+    'scrapy.spidermiddlewares.depth.DepthMiddleware': None,
 }
 
 HTTPCACHE_ENABLED = True

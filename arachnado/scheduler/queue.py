@@ -1,3 +1,4 @@
+import numpy as np
 from scrapy.utils.reqser import request_to_dict, request_from_dict
 from pymongo import MongoClient, ASCENDING
 from . import picklecompat
@@ -110,7 +111,8 @@ class SpiderPriorityQueue(Base):
     def _mongo_push(self, request):
         queue_item = {
             "score": -request.priority,
-            "data": self._encode_request(request)
+            "data": self._encode_request(request),
+            "random_score": np.random.random()
         }
         self.queue_col.insert(queue_item)
 
@@ -129,7 +131,7 @@ class SpiderPriorityQueue(Base):
         """
         reqs_in_redis = self._redis_len()
         if (reqs_in_redis < self.redis_size_limit * self.redis_size_trigger_mult):
-            for result in self.queue_col.find().sort([("score",ASCENDING)]).limit(self.redis_size_limit - reqs_in_redis):
+            for result in self.queue_col.find().sort([("score",ASCENDING), ("random_score",ASCENDING),]).limit(self.redis_size_limit - reqs_in_redis):
                 # print(result)
                 self.queue_col.remove({"_id":result["_id"]})
                 request = self._decode_request(result["data"])

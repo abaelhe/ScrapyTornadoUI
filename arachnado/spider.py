@@ -144,7 +144,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     only_landing_screens = True
     splash_in_parallel = True
     out_file_dir = None
-    handle_httpstatus_list = [400, 404, 401, 403, 500, 520, 504]
+    handle_httpstatus_list = [400, 404, 401, 403, 404, 429, 500, 520, 504, 503]
     start_priority = 1000
 
     def __init__(self, *args, **kwargs):

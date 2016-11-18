@@ -1,4 +1,4 @@
-import numpy as np
+import random as rnd
 from scrapy.utils.reqser import request_to_dict, request_from_dict
 from pymongo import MongoClient, ASCENDING
 from . import picklecompat
@@ -112,7 +112,7 @@ class SpiderPriorityQueue(Base):
         queue_item = {
             "score": -request.priority,
             "data": self._encode_request(request),
-            "random_score": np.random.random()
+            "random_score": rnd.random()
         }
         self.queue_col.insert(queue_item)
 

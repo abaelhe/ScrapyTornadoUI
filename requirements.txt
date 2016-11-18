@@ -13,5 +13,4 @@ autologin-middleware == 0.1.1
 scrapy-splash
 scrapy_redis
 elasticsearch
-numpy
 six

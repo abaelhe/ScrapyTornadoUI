@@ -217,8 +217,9 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             response.meta["unusable"] = True
             self.logger.warning("not usable response type skipped: {} from {}".format(type(response), response.url))
             return
-        # print("-- 2")
-        # print(dir(response))
+        # # print("-- 2")
+        # # print(dir(re/sponse))
+        # print(response.body[:2000])
         # print("{} : {}".format(response.meta["depth"], response.url))
         req_priority = self.start_priority - response.meta["depth"]
         if self.settings.getbool('PREFER_PAGINATION'):
@@ -232,9 +233,9 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                         yield req
                     # yield scrapy.Request(url, meta={'is_page': True})
         for link in self.get_links(response):
+            # print("-----" + link.url)
             if link_looks_like_logout(link):
                 continue
-            # print("-----" + link.url)
             # yield scrapy.Request(link.url, self.parse)
             for req in self.create_request(link.url.replace("\n", ""), self.parse, priority=req_priority):
                 yield req

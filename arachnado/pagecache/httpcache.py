@@ -1,12 +1,17 @@
+import logging
 from email.utils import formatdate
 from twisted.internet import defer
 from twisted.internet.error import TimeoutError, DNSLookupError, \
         ConnectionRefusedError, ConnectionDone, ConnectError, \
         ConnectionLost, TCPTimedOutError
+
 from scrapy import signals
 from scrapy.exceptions import NotConfigured, IgnoreRequest
 from scrapy.utils.misc import load_object
 from scrapy.xlib.tx import ResponseFailed
+
+
+logger = logging.getLogger(__name__)
 
 
 class HttpCacheMiddleware(object):
@@ -23,6 +28,8 @@ class HttpCacheMiddleware(object):
         self.storage = load_object(settings['HTTPCACHE_STORAGE'])(settings)
         self.ignore_missing = settings.getbool('HTTPCACHE_IGNORE_MISSING')
         self.stats = stats
+        logger.info("HTTP cache initialted")
+        logger.info(type(self.storage))
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -45,7 +52,6 @@ class HttpCacheMiddleware(object):
         if not self.policy.should_cache_request(request):
             request.meta['_dont_cache'] = True  # flag as uncacheable
             return
-
         # Look for cached response and check if expired
         cachedresponse = self.storage.retrieve_response(spider, request)
         if cachedresponse is None:
@@ -54,13 +60,11 @@ class HttpCacheMiddleware(object):
                 self.stats.inc_value('httpcache/ignore', spider=spider)
                 raise IgnoreRequest("Ignored request not in cache: %s" % request)
             return  # first time request
-
         # Return cached response only if not expired
         cachedresponse.flags.append('cached')
         if self.policy.is_cached_response_fresh(cachedresponse, request):
             self.stats.inc_value('httpcache/hit', spider=spider)
             return cachedresponse
-
         # Keep a reference to cached response to avoid a second cache lookup on
         # process_response hook
         request.meta['cached_response'] = cachedresponse

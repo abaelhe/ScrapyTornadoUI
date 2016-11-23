@@ -56,9 +56,6 @@ SPIDER_MIDDLEWARES = {
     'scrapy.spidermiddlewares.depth.DepthMiddleware': None,
 }
 
-HTTPCACHE_ENABLED = True
-HTTPCACHE_CLEANUP_PARAMS = {}
-
 DOWNLOADER_MIDDLEWARES = {
     'arachnado.pagecache.httpcache.HttpCacheMiddleware': 230,
     'arachnado.downloadermiddlewares.proxyfromsettings.ProxyFromSettingsMiddleware': 240,
@@ -85,6 +82,10 @@ EXTENSIONS = {
 
 MONGO_EXPORT_ENABLED = True
 MONGO_EXPORT_JOBID_KEY = '_job_id'
-HTTPCACHE_ENABLED = False
-# This storage is read-only. Responses are stored by PageExport middleware
-HTTPCACHE_STORAGE = 'arachnado.pagecache.mongo.MongoCacheStorage'
+
+HTTPCACHE_ENABLED = True
+HTTPCACHE_CLEANUP_PARAMS = {}
+HTTPCACHE_STORAGE = 'arachnado.pagecache.composite.CompositeCacheStorage'
+# HTTPCACHE_STORAGE = 'arachnado.pagecache.mongo.MongoCacheStorage'
+
+

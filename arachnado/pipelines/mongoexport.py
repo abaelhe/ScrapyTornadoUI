@@ -215,8 +215,6 @@ class MongoExportPipeline(object):
             }}
         )
 
-
-
     def _stop_periodic_tasks(self):
         if self._dump_pc is not None and self._dump_pc.is_running():
             self._dump_pc.stop()

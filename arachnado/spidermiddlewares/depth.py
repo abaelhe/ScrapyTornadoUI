@@ -37,7 +37,11 @@ class DepthMiddleware(object):
                 else:
                     url = request.url
                 parsed_url = urlparse(url)
-                depthlimit = self.domainsdepth.get(parsed_url.netloc, self.maxdepth)
+                # dots are repalced for Mongo storage
+                url_domain = parsed_url.netloc.replace(".", "_")
+                depthlimit = self.domainsdepth.get(url_domain, self.maxdepth)
+                if url_domain in self.domainsdepth:
+                    logger.debug("Using specific depth for {}".format(url_domain))
                 if self.prio:
                     request.priority -= depth * self.prio
                 if self.maxdepth and depth > depthlimit:

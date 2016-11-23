@@ -133,7 +133,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     """
     """
     name = 'onionwide'
-    download_maxsize = 1024 * 1024 * 5
+    download_maxsize = 1024 * 1024 * 1
     start_urls = None
     file_feed = None
     link_ext_allow = None

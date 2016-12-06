@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from scrapy_redis.spiders import RedisMixin
 from arachnado.scheduler.scheduler import Scheduler
 from w3lib.http import basic_auth_header
+from six.moves.urllib.parse import urlparse
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -146,12 +147,16 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     out_file_dir = None
     handle_httpstatus_list = [400, 404, 401, 403, 404, 429, 500, 520, 504, 503]
     start_priority = 1000
+    settings = None
 
     def __init__(self, *args, **kwargs):
+        if not self.settings:
+            self.settings = {}
         super(WideOnionCrawlSpider, self).__init__(*args, **kwargs)
         self.start_urls = kwargs.get("start_urls", [])
         self.file_feed = kwargs.get("file_feed", None)
         self.link_ext_allow = kwargs.get("link_ext_allow", "https?:\/\/[^\/]*\.onion")
+
         self.use_splash = kwargs.get("use_splash", False)
         self.only_landing_screens = kwargs.get("only_landing_screens", True)
         self.splash_in_parallel = kwargs.get("splash_in_parallel", True)
@@ -160,6 +165,13 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             # self.processed_urls = set([])
             self.processed_netloc = set([])
             self.out_file_num = 0
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        obj = super(WideOnionCrawlSpider, cls).from_crawler(crawler, *args, **kwargs)
+        obj.settings = crawler.settings
+        obj.stats = crawler.stats
+        return obj
 
     def start_requests(self):
         self.logger.info("Started job %s (mongo id=%s)",    self.crawl_id, self.motor_job_id)
@@ -182,8 +194,15 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                            add_meta={},
                            priority=0
                            ):
+        site_passwords = self.settings.get("SITE_PASSWORDS", {})
         fixed_url = add_scheme_if_missing(url)
         meta = {}
+        parsed_url = urlparse(url)
+        # dots are repalced for Mongo storage
+        url_domain = parsed_url.netloc.replace(".", "_")
+        if url_domain in site_passwords:
+            meta['autologin_username'] = site_passwords[url_domain].get("username", "")
+            meta['autologin_password'] = site_passwords[url_domain].get("password", "")
         meta.update(add_meta)
         if not self.use_splash:
             # print("1")

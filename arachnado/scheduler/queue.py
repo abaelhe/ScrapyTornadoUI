@@ -1,7 +1,12 @@
+import logging
 import random as rnd
 from scrapy.utils.reqser import request_to_dict, request_from_dict
 from pymongo import MongoClient, ASCENDING
+from pymongo.errors import AutoReconnect
 from . import picklecompat
+
+
+logger = logging.getLogger(__name__)
 
 
 class Base(object):
@@ -114,7 +119,11 @@ class SpiderPriorityQueue(Base):
             "data": self._encode_request(request),
             "random_score": rnd.random()
         }
-        self.queue_col.insert(queue_item)
+        try:
+            self.queue_col.insert(queue_item)
+        except AutoReconnect:
+            self.stats.inc_value('scheduler/composite/mongo_push_errors', spider=self.spider)
+            logger.error("Error while connecting to MONGO at {}".format(self.queue_uri))
 
     def _redis_pop(self, pos=0):
         pipe = self.server.pipeline()
@@ -131,13 +140,17 @@ class SpiderPriorityQueue(Base):
         """
         reqs_in_redis = self._redis_len()
         if (reqs_in_redis < self.redis_size_limit * self.redis_size_trigger_mult):
-            for result in self.queue_col.find().sort([("score",ASCENDING), ("random_score",ASCENDING),]).limit(self.redis_size_limit - reqs_in_redis):
-                # print(result)
-                self.queue_col.remove({"_id":result["_id"]})
-                request = self._decode_request(result["data"])
-                self._redis_push(request)
-                if self.stats:
-                    self.stats.inc_value('scheduler/composite/to_redis', spider=self.spider)
+            try:
+                for result in self.queue_col.find().sort([("score",ASCENDING), ("random_score",ASCENDING),]).limit(self.redis_size_limit - reqs_in_redis):
+                    # print(result)
+                    self.queue_col.remove({"_id":result["_id"]})
+                    request = self._decode_request(result["data"])
+                    self._redis_push(request)
+                    if self.stats:
+                        self.stats.inc_value('scheduler/composite/to_redis', spider=self.spider)
+            except AutoReconnect:
+                self.stats.inc_value('scheduler/composite/mongo_pull_errors', spider=self.spider)
+                logger.error("Error while connecting to MONGO at {}".format(self.queue_uri))
         return self._redis_pop()
 
     def clear(self):

@@ -138,6 +138,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     start_urls = None
     file_feed = None
     link_ext_allow = None
+    link_ext_allow_domains = None
     use_splash = False
     splash_script = None
     # processed_urls = None
@@ -156,7 +157,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         self.start_urls = kwargs.get("start_urls", [])
         self.file_feed = kwargs.get("file_feed", None)
         self.link_ext_allow = kwargs.get("link_ext_allow", "https?:\/\/[^\/]*\.onion")
-
+        self.link_ext_allow_domains = kwargs.get("link_ext_allow_domains", ())
         self.use_splash = kwargs.get("use_splash", False)
         self.only_landing_screens = kwargs.get("only_landing_screens", True)
         self.splash_in_parallel = kwargs.get("splash_in_parallel", True)
@@ -277,6 +278,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     def link_extractor(self):
         return LinkExtractor(
             allow=self.link_ext_allow,
+            allow_domains=self.link_ext_allow_domains,
             canonicalize=False,
         )
 

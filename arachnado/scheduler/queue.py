@@ -39,7 +39,7 @@ class Base(object):
         self.queue_uri = self.spider.settings.get('MONGO_REQUESTS_QUEUE_URI')
         self.queue_client = MongoClient(self.queue_uri)
         self.queue_col = self.queue_client["arachnado"]["queue"]
-        self.queue_col.ensure_index('score', unique=False)
+#        self.queue_col.ensure_index('score', unique=False)
         self.redis_size_limit = self.spider.settings.get('MAX_REDIS_QUEUE_SIZE', 1000)
         self.redis_size_trigger_mult = self.spider.settings.get('MAX_REDIS_QUEUE_SIZE_TRIGGER', 0.8)
 

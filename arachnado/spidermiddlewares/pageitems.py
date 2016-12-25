@@ -28,24 +28,26 @@ class PageItemsMiddleware(object):
             return result
 
     def get_page_item(self, response, items, type_='page'):
-            if response.meta.get("unusable", False):
-                page_body = "!REMOVED!"
-            else:
-                try:
-                    page_body = response.body_as_unicode()
-                except:
-                    page_body = "!EXTRACTION_ERROR!"
-            page_item = {
-                'crawled_at': datetime.datetime.utcnow(),
-                # TODO: save url in searchable format
-                'url': response.url,
-                'status': response.status,
-                'headers': response.headers.to_unicode_dict(),
-                'body': page_body,
-                'meta': response.meta,
-                'items': items,
-                '_type': type_,
-            }
-            if "url" in response.meta:
-                page_item["url"] = response.meta["url"]
-            return page_item
+        if response.meta.get("no_item", False):
+            return
+        if response.meta.get("unusable", False):
+            page_body = "!REMOVED!"
+        else:
+            try:
+                page_body = response.body_as_unicode()
+            except:
+                page_body = "!EXTRACTION_ERROR!"
+        page_item = {
+            'crawled_at': datetime.datetime.utcnow(),
+            # TODO: save url in searchable format
+            'url': response.url,
+            'status': response.status,
+            'headers': response.headers.to_unicode_dict(),
+            'body': page_body,
+            'meta': response.meta,
+            'items': items,
+            '_type': type_,
+        }
+        if "url" in response.meta:
+            page_item["url"] = response.meta["url"]
+        return page_item

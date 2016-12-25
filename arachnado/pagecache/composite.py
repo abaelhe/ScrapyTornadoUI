@@ -19,9 +19,12 @@ class CompositeCacheStorage(object):
         self.db_uri = settings.get('MOTOR_PIPELINE_URI')
         self.index_name = settings.get('ES_INDEX_NAME')
         self.type_name = settings.get('ES_TYPE_NAME')
-        self.es_url = settings.get('ES_URL')
+        self.es_url = settings.get('ES_URL', None)
         self.es_page_body = settings.get('ES_PAGE_BODY_KEY', "pagetext")
-        self.es_client = es.Elasticsearch([self.es_url])
+        if self.es_url:
+            self.es_client = es.Elasticsearch([self.es_url,])
+        else:
+            self.es_client = None
         usable_codes_key = "USABLE_CACHED_RESPONSE_CODES"
         if usable_codes_key in settings:
             self.status_codes = settings[usable_codes_key]
@@ -64,7 +67,7 @@ class CompositeCacheStorage(object):
             respcls = SplashResponse
         else:
             respcls = responsetypes.from_args(headers=headers, url=url)
-        if "es_id" in doc and not len(body):
+        if "es_id" in doc and not len(body) and self.es_client:
             logger.debug("elasticsearch as datasource")
             es_data = self.es_client.get(index=self.index_name, doc_type=self.type_name, id=doc["es_id"])
             body = es_data["_source"][self.es_page_body].encode('utf8', errors='ignore')

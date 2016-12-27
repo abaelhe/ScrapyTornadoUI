@@ -156,6 +156,8 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     handle_httpstatus_list = [400, 404, 401, 403, 404, 429, 500, 520, 504, 503]
     start_priority = 1000
     settings = None
+    validate_html = True
+    allowed_statuses = [200, 301, 302, 303, 304, 307]
 
     def __init__(self, *args, **kwargs):
         if not self.settings:
@@ -244,6 +246,13 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             response.meta["unusable"] = True
             self.logger.warning("not usable response type skipped: {} from {}".format(type(response), response.url))
             return
+        if self.validate_html:
+            validation_result = len(response.xpath('.//*')) > 0
+            if not validation_result:
+                response.meta["no_item"] = True
+        if self.allowed_statuses:
+            if response.status not in self.allowed_statuses:
+                response.meta["no_item"] = True
         # # print("-- 2")
         # # print(dir(re/sponse))
         # print(response.body[:2000])
@@ -444,9 +453,9 @@ class ScreenshotSpider(scrapy.Spider):
     s3_secret_key = None
     last_id = None
     splash_script = None
+    stats = None
 
     def start_requests(self):
-        print("start_requests")
         return self.next_requests()
 
     def setup_collection(self, crawler=None):
@@ -476,16 +485,17 @@ class ScreenshotSpider(scrapy.Spider):
         #TODO: client close on spider close
 
     def next_requests(self):
-        items_query = {}
+        items_query = {"pagepicurl": { '$exists': False}}
         if self.last_id:
-            items_query = {"_id": {"$gt": self.last_id}}
+            items_query = {'$and':[
+                {"_id": {"$gt": self.last_id}},
+                items_query]
+            }
         for cdr in self.pages_collection.find(items_query,
                                              limit=self.mongo_batch_size,
+                                             fields=['url',],
                                              sort=[('_id', 1), ]):
-        # cdr = self.pages_collection.find_one(items_query, sort=[('_id', 1), ])
-        # if cdr:
             self.last_id = cdr["_id"]
-            print(cdr["url"])
             req = self.create_request(url=cdr["url"],
                                       callback=self.parse,
                                       add_meta={"mongo_id":cdr["_id"]})
@@ -493,13 +503,10 @@ class ScreenshotSpider(scrapy.Spider):
                 yield req
 
     def schedule_next_requests(self):
-        print("schedule_next_requests")
         for req in self.next_requests():
-            print("NEW REQUEST")
             self.crawler.engine.crawl(req, spider=self)
 
     def spider_idle(self):
-        print("spider_idle")
         self.schedule_next_requests()
         raise DontCloseSpider
 
@@ -508,6 +515,7 @@ class ScreenshotSpider(scrapy.Spider):
         obj = super(ScreenshotSpider, self).from_crawler(crawler, *args, **kwargs)
         obj.setup_collection(crawler)
         obj.splash_script = pkgutil.get_data("arachnado", "lua/info.lua").decode("utf-8")
+        obj.stats = crawler.stats
         return obj
 
     def parse(self, response):
@@ -528,6 +536,8 @@ class ScreenshotSpider(scrapy.Spider):
                     update_res = self.pages_collection.update(
                         {"_id":response.meta["mongo_id"]},
                         {'$set': {"pagepicurl": picfilename}})
+                    if self.stats:
+                        self.stats.inc_value('screenshots/taken', spider=self)
 
     def create_request(self,
                            url,
@@ -535,7 +545,6 @@ class ScreenshotSpider(scrapy.Spider):
                            cookies={},
                            add_args={},
                            add_meta={},
-                           priority=0
                            ):
         site_passwords = self.settings.get("SITE_PASSWORDS", {})
         fixed_url = url
@@ -552,7 +561,6 @@ class ScreenshotSpider(scrapy.Spider):
         endpoint = "execute"
         args = {'lua_source': self.splash_script, "cookies": cookies}
         args.update(add_args)
-        # print("4")
         return SplashRequest(url=fixed_url,
                             callback=callback,
                             args=args,

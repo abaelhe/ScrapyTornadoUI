@@ -330,6 +330,7 @@ class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
     def link_extractor(self):
         return LinkExtractor(
             allow=self.link_ext_allow,
+            allow_domains=self.link_ext_allow_domains,
             canonicalize=False,
         )
 

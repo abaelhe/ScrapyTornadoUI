@@ -81,8 +81,8 @@ class SpiderPriorityQueue(Base):
         return self.server.zcard(self.key)
 
     def _mongo_len(self):
-        # return 0
-        return self.queue_col.count()
+        return 0
+        #return self.queue_col.count()
 
     def push(self, request):
         """Push a request"""

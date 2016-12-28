@@ -6,18 +6,26 @@ import logging
 import scrapy
 from scrapy.linkextractors import LinkExtractor
 from scrapy.http.response.html import HtmlResponse
-from scrapy_splash.response import SplashResponse, SplashTextResponse
+from scrapy_splash.response import SplashResponse, SplashTextResponse, SplashJsonResponse
 from autologin_middleware import link_looks_like_logout
 
 from arachnado.utils.misc import add_scheme_if_missing, get_netloc
 import pkgutil
 import json
 import re
-from urllib.parse import urlsplit
+# from urllib.parse import urlsplit
 from scrapy_redis.spiders import RedisMixin
 from arachnado.scheduler.scheduler import Scheduler
 from w3lib.http import basic_auth_header
-from six.moves.urllib.parse import urlparse
+from six.moves.urllib.parse import urlparse, urlsplit
+from scrapy.exceptions import DontCloseSpider
+import scrapy
+import os
+import logging
+from scrapy_splash.request import SplashRequest
+from io import StringIO
+import base64
+import autopager
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -119,7 +127,6 @@ class CrawlWebsiteSpider(ArachnadoSpider):
             yield scrapy.Request(link.url, self.parse)
 
     def _pagination_urls(self, response):
-        import autopager
         return [url for url in autopager.urls(response)
                 if self.link_extractor.matches(url)]
 
@@ -149,6 +156,8 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     handle_httpstatus_list = [400, 404, 401, 403, 404, 429, 500, 520, 504, 503]
     start_priority = 1000
     settings = None
+    validate_html = True
+    allowed_statuses = [200, 301, 302, 303, 304, 307]
 
     def __init__(self, *args, **kwargs):
         if not self.settings:
@@ -199,7 +208,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         fixed_url = add_scheme_if_missing(url)
         meta = {}
         parsed_url = urlparse(url)
-        # dots are repalced for Mongo storage
+        # dots are replaced for Mongo storage
         url_domain = parsed_url.netloc.replace(".", "_")
         if url_domain in site_passwords:
             meta['autologin_username'] = site_passwords[url_domain].get("username", "")
@@ -237,6 +246,13 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             response.meta["unusable"] = True
             self.logger.warning("not usable response type skipped: {} from {}".format(type(response), response.url))
             return
+        if self.validate_html:
+            validation_result = len(response.xpath('.//*')) > 0
+            if not validation_result:
+                response.meta["no_item"] = True
+        if self.allowed_statuses:
+            if response.status not in self.allowed_statuses:
+                response.meta["no_item"] = True
         # # print("-- 2")
         # # print(dir(re/sponse))
         # print(response.body[:2000])
@@ -259,20 +275,20 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             # yield scrapy.Request(link.url, self.parse)
             for req in self.create_request(link.url.replace("\n", ""), self.parse, priority=req_priority):
                 yield req
-        if self.use_splash and is_splash_resp:
-            # print("--- 0.2")
-            splash_res = extract_splash_response(response)
-            if splash_res:
-                self.out_file_num += 1
-                if self.out_file_dir:
-                    store_file("{}.html".format(self.out_file_num),
-                                             self.out_file_dir, splash_res["html"])
-                    store_img("{}.png".format(self.out_file_num),
-                                             self.out_file_dir, splash_res["png"])
-                item = SiteScreenshotItem()
-                item["url"] = splash_res["url"]
-                item["png_image"] = splash_res["png"]
-                yield item
+        # if self.use_splash and is_splash_resp:
+        #     # print("--- 0.2")
+        #     splash_res = extract_splash_response(response)
+        #     if splash_res:
+        #         self.out_file_num += 1
+        #         if self.out_file_dir:
+        #             store_file("{}.html".format(self.out_file_num),
+        #                                      self.out_file_dir, splash_res["html"])
+        #             store_img("{}.png".format(self.out_file_num),
+        #                                      self.out_file_dir, splash_res["png"])
+        #         item = SiteScreenshotItem()
+        #         item["url"] = splash_res["url"]
+        #         item["png_image"] = splash_res["png"]
+        #         yield item
 
     @property
     def link_extractor(self):
@@ -367,18 +383,15 @@ def _dont_increase_depth(response):
         response.meta['depth'] += 1
 
 
-import os
-import logging
-from scrapy_splash.request import SplashRequest
-from io import StringIO
-import base64
-
-
 def extract_splash_response(response):
+    # print(response.body)
+    # print(dir(response))
     if response.status != 200:
         logging.error(response.body)
     else:
         splash_res = response.data
+        # splash_res = response.body
+        # return json.loads(splash_res)
         return splash_res
     return None
 
@@ -388,6 +401,22 @@ def store_img(file_name, storage_dir, img_content):
     with open(full_path, "wb") as fout:
         fout.write(image_bytes)
     return full_path
+
+
+from boto.s3.connection import OrdinaryCallingFormat, S3Connection
+from boto.s3.key import Key
+
+
+def s3_store_img(file_name, bucket_name, img_content, aws_key, aws_secret_key):
+    conn = S3Connection(aws_access_key_id=aws_key,
+                        aws_secret_access_key=aws_secret_key)
+    image_bytes = base64.b64decode(img_content)
+    bucket = conn.get_bucket(bucket_name)
+    k = Key(bucket)
+    k.key = '/img/{}'.format(file_name)
+    k.set_contents_from_string(image_bytes)
+    k.set_acl('public-read')
+    k.close()
 
 
 def store_file(file_name, storage_dir, file_content):
@@ -407,11 +436,135 @@ def get_domain(url):
     return re.sub(r'^www\.', '', domain)
 
 
-import scrapy
+from arachnado.utils.mongo import motor_from_uri
+from scrapy import signals
+import uuid
+import pymongo
 
 
-class SiteScreenshotItem(scrapy.Item):
-    url = scrapy.Field()
-    png_image = scrapy.Field()
+class ScreenshotSpider(scrapy.Spider):
+    name = 'screenshots'
+    pages_collection = None
+    pages_client = None
+    pages_uri = None
+    fs_export_path = None
+    s3_export_path = None
+    s3_key = None
+    s3_secret_key = None
+    last_id = None
+    splash_script = None
+    stats = None
 
+    def start_requests(self):
+        return self.next_requests()
 
+    def setup_collection(self, crawler=None):
+        if crawler is None:
+            crawler = getattr(self, 'crawler', None)
+        if crawler is None:
+            raise ValueError("crawler is required")
+        settings = crawler.settings
+        self.pages_uri = settings.get('MONGO_PAGES_URI')
+        self.db_uri = settings.get('MOTOR_PIPELINE_URI')
+        # self.pages_client, _, _, _, self.pages_collection = \
+        #     motor_from_uri(self.pages_uri)
+        self.db = pymongo.MongoClient(self.db_uri)
+        self.db_name = 'arachnado'
+        self.pages_collection = self.db[self.db_name]['items']
+        self.mongo_batch_size = settings.getint('MONGO_BATCH_SIZE', 20)
+        try:
+            self.mongo_batch_size = int(self.mongo_batch_size)
+        except (TypeError, ValueError):
+            raise ValueError("mongo_batch_size must be an integer")
+        self.fs_export_path = settings.get('PNG_STORAGE_FS', None)
+        self.s3_export_path = settings.get('PNG_STORAGE_AWS_S3', None)
+        if self.s3_export_path:
+            self.s3_key = settings.get('AWS_STORAGE_KEY', None)
+            self.s3_secret_key = settings.get('AWS_STORAGE_SECRET_KEY', None)
+        crawler.signals.connect(self.spider_idle, signal=signals.spider_idle)
+        #TODO: client close on spider close
+
+    def next_requests(self):
+        items_query = {"pagepicurl": { '$exists': False}}
+        if self.last_id:
+            items_query = {'$and':[
+                {"_id": {"$gt": self.last_id}},
+                items_query]
+            }
+        for cdr in self.pages_collection.find(items_query,
+                                             limit=self.mongo_batch_size,
+                                             fields=['url',],
+                                             sort=[('_id', 1), ]):
+            self.last_id = cdr["_id"]
+            req = self.create_request(url=cdr["url"],
+                                      callback=self.parse,
+                                      add_meta={"mongo_id":cdr["_id"]})
+            if req:
+                yield req
+
+    def schedule_next_requests(self):
+        for req in self.next_requests():
+            self.crawler.engine.crawl(req, spider=self)
+
+    def spider_idle(self):
+        self.schedule_next_requests()
+        raise DontCloseSpider
+
+    @classmethod
+    def from_crawler(self, crawler, *args, **kwargs):
+        obj = super(ScreenshotSpider, self).from_crawler(crawler, *args, **kwargs)
+        obj.setup_collection(crawler)
+        obj.splash_script = pkgutil.get_data("arachnado", "lua/info.lua").decode("utf-8")
+        obj.stats = crawler.stats
+        return obj
+
+    def parse(self, response):
+        response.meta["no_item"] = True
+        # print(type(response))
+        is_splash_resp = isinstance(response, SplashJsonResponse)
+        if is_splash_resp:
+            splash_res = extract_splash_response(response)
+            if splash_res:
+                picfilename = "{}.png".format(str(uuid.uuid4()))
+                if self.fs_export_path:
+                    store_img(picfilename, self.fs_export_path, splash_res["png"])
+                if self.s3_export_path:
+                    s3_store_img(picfilename, self.s3_export_path,
+                                 splash_res["png"],
+                                 self.s3_key, self.s3_secret_key)
+                if self.fs_export_path or self.s3_export_path:
+                    update_res = self.pages_collection.update(
+                        {"_id":response.meta["mongo_id"]},
+                        {'$set': {"pagepicurl": picfilename}})
+                    if self.stats:
+                        self.stats.inc_value('screenshots/taken', spider=self)
+
+    def create_request(self,
+                           url,
+                           callback,
+                           cookies={},
+                           add_args={},
+                           add_meta={},
+                           ):
+        site_passwords = self.settings.get("SITE_PASSWORDS", {})
+        fixed_url = url
+        # fixed_url = add_scheme_if_missing(url)
+        meta = {}
+        parsed_url = urlparse(url)
+        # dots are replaced for Mongo storage
+        url_domain = parsed_url.netloc.replace(".", "_")
+        if url_domain in site_passwords:
+            meta['autologin_username'] = site_passwords[url_domain].get("username", "")
+            meta['autologin_password'] = site_passwords[url_domain].get("password", "")
+        meta.update(add_meta)
+        meta.update({"url": fixed_url})
+        endpoint = "execute"
+        args = {'lua_source': self.splash_script, "cookies": cookies}
+        args.update(add_args)
+        return SplashRequest(url=fixed_url,
+                            callback=callback,
+                            args=args,
+                            endpoint=endpoint,
+                            dont_filter=True,
+                            meta=meta,
+            )

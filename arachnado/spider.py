@@ -454,6 +454,7 @@ class ScreenshotSpider(scrapy.Spider):
     last_id = None
     splash_script = None
     stats = None
+    handle_httpstatus_list = [400, 404, 401, 403, 404, 429, 500, 520, 504, 503]
 
     def start_requests(self):
         return self.next_requests()
@@ -519,6 +520,8 @@ class ScreenshotSpider(scrapy.Spider):
         return obj
 
     def parse(self, response):
+        if response.status != 200:
+            logging.debug(response.body)
         response.meta["no_item"] = True
         # print(type(response))
         is_splash_resp = isinstance(response, SplashJsonResponse)
@@ -559,7 +562,9 @@ class ScreenshotSpider(scrapy.Spider):
         meta.update(add_meta)
         meta.update({"url": fixed_url})
         endpoint = "execute"
-        args = {'lua_source': self.splash_script, "cookies": cookies}
+        args = {'lua_source': self.splash_script,
+                "cookies": cookies,
+                "timeout":60}
         args.update(add_args)
         return SplashRequest(url=fixed_url,
                             callback=callback,

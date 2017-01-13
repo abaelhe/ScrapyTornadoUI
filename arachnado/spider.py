@@ -26,6 +26,11 @@ from scrapy_splash.request import SplashRequest
 from io import StringIO
 import base64
 import autopager
+from pprint import pprint
+from arachnado.utils.mongo import motor_from_uri
+from scrapy import signals
+import uuid
+import pymongo
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -148,7 +153,11 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     link_ext_allow_domains = None
     use_splash = False
     splash_script = None
-    # processed_urls = None
+    # images storage
+    fs_export_path = None
+    s3_export_path = None
+    s3_key = None
+    s3_secret_key = None
     processed_netloc = None
     only_landing_screens = True
     splash_in_parallel = True
@@ -156,6 +165,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     handle_httpstatus_list = [400, 404, 401, 403, 404, 429, 500, 520, 504, 503]
     start_priority = 1000
     settings = None
+    stats = None
     validate_html = True
     allowed_statuses = [200, 301, 302, 303, 304, 307]
 
@@ -176,11 +186,20 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             self.processed_netloc = set([])
             self.out_file_num = 0
 
+    def post_init(self):
+        self.download_maxsize = self.settings.get("DOWNLOAD_MAXSIZE", self.download_maxsize)
+        self.fs_export_path = self.settings.get('PNG_STORAGE_FS', None)
+        self.s3_export_path = self.settings.get('PNG_STORAGE_AWS_S3', None)
+        if self.s3_export_path:
+            self.s3_key = self.settings.get('AWS_STORAGE_KEY', None)
+            self.s3_secret_key = self.settings.get('AWS_STORAGE_SECRET_KEY', None)
+
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         obj = super(WideOnionCrawlSpider, cls).from_crawler(crawler, *args, **kwargs)
         obj.settings = crawler.settings
         obj.stats = crawler.stats
+        obj.post_init()
         return obj
 
     def start_requests(self):
@@ -242,53 +261,48 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
 
     def parse(self, response):
         is_splash_resp = isinstance(response, SplashResponse) or isinstance(response, SplashTextResponse)
+
         if not isinstance(response, HtmlResponse) and not is_splash_resp and not response.meta.get("unusable", False):
             response.meta["unusable"] = True
             self.logger.warning("not usable response type skipped: {} from {}".format(type(response), response.url))
             return
+
         if self.validate_html:
             validation_result = len(response.xpath('.//*')) > 0
             if not validation_result:
                 response.meta["no_item"] = True
+
         if self.allowed_statuses:
             if response.status not in self.allowed_statuses:
                 response.meta["no_item"] = True
-        # # print("-- 2")
-        # # print(dir(re/sponse))
-        # print(response.body[:2000])
-        # print("{} : {}".format(response.meta["depth"], response.url))
+
         req_priority = self.start_priority - response.meta["depth"]
         if self.settings.getbool('PREFER_PAGINATION'):
-            # Follow pagination links; pagination is not a subject of
-            # a max depth limit. This also prioritizes pagination links because
-            # depth is not increased for them.
             with _dont_increase_depth(response):
                 for url in self._pagination_urls(response):
-                    # print("---------------" + url)
                     for req in self.create_request(url, self.parse, add_meta={'is_page': True}):
                         yield req
-                    # yield scrapy.Request(url, meta={'is_page': True})
+
         for link in self.get_links(response):
-            # print("-----" + link.url)
             if link_looks_like_logout(link):
                 continue
-            # yield scrapy.Request(link.url, self.parse)
             for req in self.create_request(link.url.replace("\n", ""), self.parse, priority=req_priority):
                 yield req
-        # if self.use_splash and is_splash_resp:
-        #     # print("--- 0.2")
-        #     splash_res = extract_splash_response(response)
-        #     if splash_res:
-        #         self.out_file_num += 1
-        #         if self.out_file_dir:
-        #             store_file("{}.html".format(self.out_file_num),
-        #                                      self.out_file_dir, splash_res["html"])
-        #             store_img("{}.png".format(self.out_file_num),
-        #                                      self.out_file_dir, splash_res["png"])
-        #         item = SiteScreenshotItem()
-        #         item["url"] = splash_res["url"]
-        #         item["png_image"] = splash_res["png"]
-        #         yield item
+
+        if is_splash_resp:
+            splash_res = extract_splash_response(response)
+            if splash_res:
+                picfilename = "{}.png".format(str(uuid.uuid4()))
+                if self.fs_export_path:
+                    store_img(picfilename, self.fs_export_path, splash_res["png"])
+                if self.s3_export_path:
+                    s3_store_img(picfilename, self.s3_export_path,
+                                 splash_res["png"],
+                                 self.s3_key, self.s3_secret_key)
+                if self.s3_export_path or self.fs_export_path:
+                    response.meta["pagepicurl"] = picfilename
+                    if self.stats:
+                        self.stats.inc_value('screenshots/taken', spider=self)
 
     @property
     def link_extractor(self):
@@ -436,10 +450,7 @@ def get_domain(url):
     return re.sub(r'^www\.', '', domain)
 
 
-from arachnado.utils.mongo import motor_from_uri
-from scrapy import signals
-import uuid
-import pymongo
+
 
 
 class ScreenshotSpider(scrapy.Spider):
@@ -534,11 +545,13 @@ class ScreenshotSpider(scrapy.Spider):
                 if self.s3_export_path:
                     s3_store_img(picfilename, self.s3_export_path,
                                  splash_res["png"],
-                                 self.s3_key, self.s3_secret_key)
+                                 self.s3_key,
+                                 self.s3_secret_key)
                 if self.fs_export_path or self.s3_export_path:
                     update_res = self.pages_collection.update(
-                        {"_id":response.meta["mongo_id"]},
-                        {'$set': {"pagepicurl": picfilename}})
+                            {"_id": response.meta["mongo_id"]},
+                            {'$set': {"pagepicurl": picfilename}})
+
                     if self.stats:
                         self.stats.inc_value('screenshots/taken', spider=self)
 

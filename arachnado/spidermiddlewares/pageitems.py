@@ -37,6 +37,7 @@ class PageItemsMiddleware(object):
                 page_body = response.body_as_unicode()
             except:
                 page_body = "!EXTRACTION_ERROR!"
+
         page_item = {
             'crawled_at': datetime.datetime.utcnow(),
             # TODO: save url in searchable format
@@ -48,6 +49,8 @@ class PageItemsMiddleware(object):
             'items': items,
             '_type': type_,
         }
+        if "pagepicurl" in response.meta:
+            page_item["pagepicurl"] = response.meta["pagepicurl"]
         if "url" in response.meta:
             page_item["url"] = response.meta["url"]
         return page_item

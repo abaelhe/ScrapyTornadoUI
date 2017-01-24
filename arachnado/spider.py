@@ -4,6 +4,9 @@ import contextlib
 import logging
 
 import scrapy
+from scrapy.spidermiddlewares.httperror import HttpError
+from twisted.internet.error import DNSLookupError
+from twisted.internet.error import TimeoutError
 from scrapy.linkextractors import LinkExtractor
 from scrapy.http.response.html import HtmlResponse
 from scrapy_splash.response import SplashResponse, SplashTextResponse, SplashJsonResponse
@@ -182,7 +185,6 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         self.splash_in_parallel = kwargs.get("splash_in_parallel", True)
         if self.use_splash:
             self.splash_script = pkgutil.get_data("arachnado", "lua/info.lua").decode("utf-8")
-            # self.processed_urls = set([])
             self.processed_netloc = set([])
             self.out_file_num = 0
 
@@ -223,6 +225,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                            add_meta={},
                            priority=0
                            ):
+        errback = self.process_error
         site_passwords = self.settings.get("SITE_PASSWORDS", {})
         fixed_url = add_scheme_if_missing(url)
         meta = {}
@@ -234,47 +237,67 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
             meta['autologin_password'] = site_passwords[url_domain].get("password", "")
         meta.update(add_meta)
         if not self.use_splash:
-            # print("1")
-            yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
+            yield scrapy.Request(fixed_url, callback,  errback=errback, meta=meta, priority=priority)
         else:
             netloc = get_domain(fixed_url)
             if netloc in self.processed_netloc and self.only_landing_screens:
-                # print("2")
-                yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
+                yield scrapy.Request(fixed_url, callback, errback=errback,  meta=meta, priority=priority)
             else:
                 if self.splash_in_parallel:
-                    # print("3")
-                    yield scrapy.Request(fixed_url, callback,  meta=meta, priority=priority)
+                    yield scrapy.Request(fixed_url, callback, errback=errback, meta=meta, priority=priority)
                 meta.update({"url": fixed_url})
                 endpoint = "execute"
                 args = {'lua_source': self.splash_script, "cookies": cookies}
                 args.update(add_args)
-                # print("4")
                 yield SplashRequest(url=fixed_url,
                                     callback=callback,
                                     args=args,
                                     endpoint=endpoint,
                                     dont_filter=True,
                                     meta=meta,
+                                    errback=errback,
                     )
             self.processed_netloc.add(netloc)
+
+    def _inc_stats_value(self, stats_name):
+        if self.stats:
+            self.stats.inc_value(stats_name.replace(" ", "_"), spider=self)
+
+    def process_error(self, failure):
+        request = failure.request
+        if failure.check(HttpError):
+            response = failure.value.response
+            self.logger.debug('HttpError on %s', response.url)
+            self._inc_stats_value('responses/http error')
+        elif failure.check(DNSLookupError):
+            self.logger.debug('DNSLookupError on %s', request.url)
+            self._inc_stats_value('responses/DNSLookupError')
+        elif failure.check(TimeoutError):
+            self.logger.debug('TimeoutError on %s', request.url)
+            self._inc_stats_value('responses/TimeoutError')
 
     def parse(self, response):
         is_splash_resp = isinstance(response, SplashResponse) or isinstance(response, SplashTextResponse)
 
         if not isinstance(response, HtmlResponse) and not is_splash_resp and not response.meta.get("unusable", False):
             response.meta["unusable"] = True
+            response.meta["no_item"] = True
             self.logger.warning("not usable response type skipped: {} from {}".format(type(response), response.url))
+            self._inc_stats_value('responses/invalid response type')
             return
 
         if self.validate_html:
             validation_result = len(response.xpath('.//*')) > 0
             if not validation_result:
                 response.meta["no_item"] = True
+                self._inc_stats_value('responses/invalid html')
+                return
 
         if self.allowed_statuses:
             if response.status not in self.allowed_statuses:
                 response.meta["no_item"] = True
+                self._inc_stats_value('responses/invalid http status')
+                return
 
         req_priority = self.start_priority - response.meta["depth"]
         if self.settings.getbool('PREFER_PAGINATION'):
@@ -301,8 +324,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                                  self.s3_key, self.s3_secret_key)
                 if self.s3_export_path or self.fs_export_path:
                     response.meta["pagepicurl"] = picfilename
-                    if self.stats:
-                        self.stats.inc_value('screenshots/taken', spider=self)
+                    self._inc_stats_value('screenshots/taken')
 
     @property
     def link_extractor(self):
@@ -329,26 +351,17 @@ class RedisWideOnionCrawlSpider(RedisMixin, WideOnionCrawlSpider):
         return obj
 
     def next_requests(self):
-        # print("--01")
         use_set = self.settings.getbool('REDIS_START_URLS_AS_SET')
         fetch_one = self.server.spop if use_set else self.server.lpop
         found = 0
-        # print("--02")
-        # print(self.redis_key)
         while found < self.redis_batch_size:
             data = fetch_one(self.redis_key)
-            # print("--03")
-            # print(data)
             if not data:
                 break
-            # print("--04")
             url = data.decode("utf-8")
-            # print(url)
             reqs = self.create_request(url, self.parse, priority=(self.start_priority + 1))
             if reqs:
-                # print("--05")
                 for req in reqs:
-                    # print("--06")
                     yield req
                     found += 1
             else:
@@ -369,15 +382,11 @@ class RedisCheatOnionCrawlSpider(RedisWideOnionCrawlSpider):
     name = 'onioncheat'
 
     def start_requests(self):
-        # print(self.settings["SCHEDULER"])
         scheduler = Scheduler.from_settings(self.settings)
         scheduler.open(self)
         scheduler.stats = self.stats
-        # print("scheduler created")
-        # print(scheduler.server)
         first_req = None
         for req in self.next_requests():
-            # print(req.url)
             if not first_req:
                 first_req = req
             else:
@@ -398,14 +407,10 @@ def _dont_increase_depth(response):
 
 
 def extract_splash_response(response):
-    # print(response.body)
-    # print(dir(response))
     if response.status != 200:
         logging.error(response.body)
     else:
         splash_res = response.data
-        # splash_res = response.body
-        # return json.loads(splash_res)
         return splash_res
     return None
 
@@ -448,9 +453,6 @@ def img_convert(image_splash):
 def get_domain(url):
     domain = urlsplit(url).netloc
     return re.sub(r'^www\.', '', domain)
-
-
-
 
 
 class ScreenshotSpider(scrapy.Spider):
